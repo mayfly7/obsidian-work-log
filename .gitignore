@@ -1,0 +1,4 @@
+node_modules/
+*.map
+*.zip
+.DS_Store
