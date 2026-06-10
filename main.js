@@ -353,14 +353,7 @@ var FileManager = class {
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
     if (lineNo !== void 0) {
-      setTimeout(() => {
-        const view = leaf.view;
-        if (view == null ? void 0 : view.editor) {
-          const editor = view.editor;
-          editor.setCursor({ line: lineNo, ch: 0 });
-          editor.scrollIntoView({ from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } }, true);
-        }
-      }, 100);
+      this.scrollToLineWithRetry(leaf, lineNo, 0);
     }
   }
   /**
@@ -486,6 +479,24 @@ var FileManager = class {
     await this.app.vault.modify(file, lines.join("\n"));
   }
   // ─────────────────────────────────────────────────────
+  // 滚动定位工具（多次重试，确保大文件编辑器就绪）
+  // ─────────────────────────────────────────────────────
+  scrollToLineWithRetry(leaf, lineNo, attempt) {
+    const view = leaf.view;
+    const editor = view == null ? void 0 : view.editor;
+    if (editor && editor.lineCount() > lineNo) {
+      editor.setCursor({ line: lineNo, ch: 0 });
+      editor.scrollIntoView(
+        { from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } },
+        true
+      );
+      return;
+    }
+    if (attempt < 10) {
+      setTimeout(() => this.scrollToLineWithRetry(leaf, lineNo, attempt + 1), 150);
+    }
+  }
+  // ─────────────────────────────────────────────────────
   // 结构修复
   // ─────────────────────────────────────────────────────
   /**
@@ -576,18 +587,14 @@ var FileManager = class {
     await this.app.vault.modify(file, lines.join("\n"));
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, insertIdx, 0);
     setTimeout(() => {
       const view = leaf.view;
       if (view == null ? void 0 : view.editor) {
-        const editor = view.editor;
-        editor.setCursor({ line: insertIdx, ch: entry.length });
-        editor.scrollIntoView(
-          { from: { line: insertIdx, ch: 0 }, to: { line: insertIdx, ch: entry.length } },
-          true
-        );
-        editor.focus();
+        view.editor.setCursor({ line: insertIdx, ch: entry.length });
+        view.editor.focus();
       }
-    }, 100);
+    }, 300);
     this.invalidateCache(today.year());
   }
   // ─────────────────────────────────────────────────────
@@ -795,7 +802,6 @@ var CalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     // 1-12
-    this.datesWithContent = /* @__PURE__ */ new Set();
     this.tooltip = null;
     this.plugin = plugin;
     const now = (0, import_obsidian4.moment)();
@@ -818,16 +824,11 @@ var CalendarView = class extends import_obsidian4.ItemView {
     this.removeTooltip();
   }
   async refresh() {
-    await this.loadDatesWithContent();
-    this.render();
-  }
-  async loadDatesWithContent() {
-    if (this.plugin.settings.showContentDots) {
-      this.datesWithContent = await this.plugin.fileManager.getDatesWithContent(
-        this.currentYear,
-        this.currentMonth
-      );
+    try {
+      await this.plugin.fileManager.getOrCreateFile(this.currentYear);
+    } catch (e) {
     }
+    this.render();
   }
   render() {
     const container = this.containerEl.children[1];
@@ -835,7 +836,6 @@ var CalendarView = class extends import_obsidian4.ItemView {
     container.addClass("work-log-calendar");
     this.renderHeader(container);
     this.renderCalendarGrid(container);
-    this.renderStats(container);
   }
   // ─────────────────────────────────────────────────────
   // Header（年月切换）
@@ -893,6 +893,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
       this.currentYear = n.year();
       this.currentMonth = n.month() + 1;
       await this.refresh();
+      await this.plugin.fileManager.openAndNavigateToDate(n);
     });
   }
   async navigateMonth(delta) {
@@ -942,23 +943,17 @@ var CalendarView = class extends import_obsidian4.ItemView {
       if (cellCount > 0 && cellCount % 7 === 0) {
         dayRow = grid.createDiv("wl-cal-row");
       }
-      const dateKey = cur.format("YYYY-MM-DD");
       const isToday = isSameDay(cur, today);
-      const hasContent = this.datesWithContent.has(dateKey);
       const isWeekend = cur.day() === 0 || cur.day() === 6;
       const cell = dayRow.createDiv({
         cls: [
           "wl-cal-cell",
           "wl-cal-day",
           isToday ? "wl-today" : "",
-          hasContent ? "wl-has-content" : "",
           isWeekend ? "wl-weekend" : ""
         ].filter(Boolean).join(" ")
       });
       const dayNum = cell.createSpan({ cls: "wl-day-num", text: String(cur.date()) });
-      if (hasContent && this.plugin.settings.showContentDots) {
-        cell.createDiv({ cls: "wl-dot" });
-      }
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
         await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
@@ -1045,32 +1040,6 @@ var CalendarView = class extends import_obsidian4.ItemView {
       document.body.removeChild(this.tooltip);
     }
     this.tooltip = null;
-  }
-  // ─────────────────────────────────────────────────────
-  // 统计区域
-  // ─────────────────────────────────────────────────────
-  renderStats(container) {
-    const stats = container.createDiv("wl-stats");
-    const daysCount = this.datesWithContent.size;
-    stats.createDiv({
-      cls: "wl-stat-item",
-      text: `\u{1F4C5} \u672C\u6708\u8BB0\u5F55\uFF1A${daysCount} \u5929`
-    });
-    const now = (0, import_obsidian4.moment)();
-    if (now.year() === this.currentYear && now.month() + 1 === this.currentMonth) {
-      const weekStart = this.plugin.settings.weekStart === "monday" ? now.clone().startOf("isoWeek") : now.clone().startOf("week");
-      const weekEnd = weekStart.clone().add(6, "days");
-      let weekDays = 0;
-      this.datesWithContent.forEach((d) => {
-        const m = (0, import_obsidian4.moment)(d);
-        if (m.isBetween(weekStart, weekEnd, "day", "[]"))
-          weekDays++;
-      });
-      stats.createDiv({
-        cls: "wl-stat-item",
-        text: `\u{1F4CA} \u672C\u5468\u8BB0\u5F55\uFF1A${weekDays} \u5929`
-      });
-    }
   }
   // ─────────────────────────────────────────────────────
   // 公开方法：切换到指定月份
