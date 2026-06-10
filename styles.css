@@ -1,0 +1,421 @@
+/* =====================================================
+   Work Log Plugin — styles.css
+   Obsidian 变量兼容，支持明暗主题
+   ===================================================== */
+
+/* ─── 日历容器 ─────────────────────────────────────── */
+.work-log-calendar {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  overflow-y: auto;
+  font-family: var(--font-interface);
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+/* ─── 日历头部 ─────────────────────────────────────── */
+.wl-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wl-cal-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.wl-title-sep {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.wl-nav-btn,
+.wl-today-btn {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 1.1em;
+  line-height: 1.4;
+  transition: background 0.15s;
+}
+
+.wl-nav-btn:hover,
+.wl-today-btn:hover {
+  background: var(--interactive-hover);
+}
+
+.wl-today-btn {
+  font-size: 0.78em;
+  padding: 2px 6px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wl-today-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.wl-year-select,
+.wl-month-select {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 2px 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+/* ─── 日历格子 ─────────────────────────────────────── */
+.wl-cal-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wl-cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.wl-cal-weekdays .wl-cal-cell {
+  text-align: center;
+  font-size: 0.72em;
+  color: var(--text-muted);
+  padding: 2px 0;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+}
+
+.wl-cal-cell {
+  position: relative;
+  min-height: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  cursor: default;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.wl-cal-empty {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.wl-cal-day {
+  cursor: pointer;
+  background: var(--background-secondary);
+}
+
+.wl-cal-day:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+.wl-day-num {
+  font-size: 0.82em;
+  line-height: 1;
+  color: var(--text-normal);
+  z-index: 1;
+}
+
+/* 今日高亮 */
+.wl-today {
+  background: var(--interactive-accent) !important;
+  border-color: var(--interactive-accent) !important;
+}
+
+.wl-today .wl-day-num {
+  color: var(--text-on-accent) !important;
+  font-weight: 700;
+}
+
+/* 周末 */
+.wl-weekend .wl-day-num {
+  color: var(--color-red);
+}
+
+.wl-today.wl-weekend .wl-day-num {
+  color: var(--text-on-accent) !important;
+}
+
+/* 有内容标记圆点 */
+.wl-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  margin-top: 1px;
+  position: absolute;
+  bottom: 3px;
+}
+
+.wl-today .wl-dot {
+  background: var(--text-on-accent);
+}
+
+.wl-has-content .wl-day-num {
+  font-weight: 600;
+}
+
+/* ─── 统计区域 ─────────────────────────────────────── */
+.wl-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wl-stat-item {
+  font-size: 0.82em;
+  color: var(--text-muted);
+}
+
+/* ─── 右键菜单 ─────────────────────────────────────── */
+.wl-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-l);
+  min-width: 160px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.wl-context-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.88em;
+  color: var(--text-normal);
+  transition: background 0.1s;
+}
+
+.wl-context-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ─── Hover Tooltip ────────────────────────────────── */
+.wl-tooltip {
+  position: fixed;
+  z-index: 10001;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-l);
+  padding: 8px 12px;
+  max-width: 260px;
+  pointer-events: none;
+}
+
+.wl-tt-title {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.wl-tt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wl-tt-line {
+  font-size: 0.82em;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── 搜索视图 ─────────────────────────────────────── */
+.work-log-search {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow-y: auto;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+.wl-search-header h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-normal);
+}
+
+.wl-search-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.wl-search-input {
+  flex: 1;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 5px 10px;
+  font-size: 0.9em;
+  outline: none;
+}
+
+.wl-search-input:focus {
+  border-color: var(--interactive-accent);
+}
+
+.wl-search-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 0.88em;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.wl-search-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.wl-search-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wl-no-results {
+  color: var(--text-muted);
+  font-size: 0.88em;
+  text-align: center;
+  padding: 20px 0;
+}
+
+.wl-result-count {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.wl-result-group {
+  margin-bottom: 10px;
+}
+
+.wl-result-date {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--text-accent);
+  margin-bottom: 4px;
+}
+
+.wl-result-date-icon {
+  font-size: 0.9em;
+}
+
+.wl-result-item {
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  padding: 5px 10px;
+  font-size: 0.84em;
+  color: var(--text-normal);
+  cursor: pointer;
+  margin-bottom: 2px;
+  border-left: 2px solid var(--background-modifier-border);
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.wl-result-item:hover {
+  background: var(--background-modifier-hover);
+  border-left-color: var(--interactive-accent);
+}
+
+mark.wl-highlight {
+  background: var(--text-highlight-bg);
+  color: var(--text-normal);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ─── Modal 样式 ─────────────────────────────────────── */
+.wl-modal-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.wl-date-input,
+.wl-year-sel {
+  width: 100%;
+  margin-top: 8px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 6px 10px;
+  font-size: 0.95em;
+}
+
+.wl-danger-title {
+  color: var(--color-red) !important;
+}
+
+.wl-confirm-msg {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.wl-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.wl-form-row label {
+  font-size: 0.88em;
+  color: var(--text-muted);
+  min-width: 48px;
+}
+
+.wl-form-row select {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 4px 8px;
+  font-size: 0.88em;
+}
