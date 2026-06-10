@@ -353,14 +353,7 @@ var FileManager = class {
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
     if (lineNo !== void 0) {
-      setTimeout(() => {
-        const view = leaf.view;
-        if (view == null ? void 0 : view.editor) {
-          const editor = view.editor;
-          editor.setCursor({ line: lineNo, ch: 0 });
-          editor.scrollIntoView({ from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } }, true);
-        }
-      }, 100);
+      this.scrollToLineWithRetry(leaf, lineNo, 0);
     }
   }
   /**
@@ -486,6 +479,24 @@ var FileManager = class {
     await this.app.vault.modify(file, lines.join("\n"));
   }
   // ─────────────────────────────────────────────────────
+  // 滚动定位工具（多次重试，确保大文件编辑器就绪）
+  // ─────────────────────────────────────────────────────
+  scrollToLineWithRetry(leaf, lineNo, attempt) {
+    const view = leaf.view;
+    const editor = view == null ? void 0 : view.editor;
+    if (editor && editor.lineCount() > lineNo) {
+      editor.setCursor({ line: lineNo, ch: 0 });
+      editor.scrollIntoView(
+        { from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } },
+        true
+      );
+      return;
+    }
+    if (attempt < 10) {
+      setTimeout(() => this.scrollToLineWithRetry(leaf, lineNo, attempt + 1), 150);
+    }
+  }
+  // ─────────────────────────────────────────────────────
   // 结构修复
   // ─────────────────────────────────────────────────────
   /**
@@ -538,10 +549,54 @@ var FileManager = class {
     new import_obsidian3.Notice(`\u7ED3\u6784\u4FEE\u590D\u5B8C\u6210\uFF0C\u8865\u5168\u4E86 ${repaired} \u5904\u7F3A\u5931\u6807\u9898`);
   }
   // ─────────────────────────────────────────────────────
-  // 快速插入带时间戳条目
+  // 快速插入条目
   // ─────────────────────────────────────────────────────
   /**
-   * 在今日日期区块下追加带时间戳的工作条目
+   * 在指定日期区块下追加工作记录标签（上午/下午）
+   */
+  async insertSessionLabel(date, label) {
+    const file = await this.getOrCreateFile(date.year());
+    let lineMap = await this.getDateLineMap(file);
+    const dateKey = date.format("YYYY-MM-DD");
+    if (!lineMap.has(dateKey)) {
+      await this.insertMissingDateBlock(file, date);
+      lineMap = await this.buildCache(file);
+    }
+    const headingLine = lineMap.get(dateKey);
+    if (headingLine === void 0) {
+      new import_obsidian3.Notice("\u65E0\u6CD5\u5B9A\u4F4D\u65E5\u671F\u6807\u9898");
+      return;
+    }
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const entry = `- ${label}`;
+    let insertIdx = headingLine + 1;
+    for (let i = headingLine + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("## ") || lines[i].startsWith("### ") || lines[i].startsWith("#### ")) {
+        break;
+      }
+      if (lines[i].trim() !== "") {
+        insertIdx = i + 1;
+      } else {
+        insertIdx = i;
+      }
+    }
+    lines.splice(insertIdx, 0, entry);
+    await this.app.vault.modify(file, lines.join("\n"));
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, insertIdx, 0);
+    setTimeout(() => {
+      const view = leaf.view;
+      if (view == null ? void 0 : view.editor) {
+        view.editor.setCursor({ line: insertIdx, ch: entry.length });
+        view.editor.focus();
+      }
+    }, 300);
+    this.invalidateCache(date.year());
+  }
+  /**
+   * 在指定日期区块下追加带时间戳的工作条目
    */
   async insertTimestampEntry(customDate) {
     const today = customDate || (0, import_obsidian3.moment)();
@@ -554,7 +609,7 @@ var FileManager = class {
     }
     const headingLine = lineMap.get(dateKey);
     if (headingLine === void 0) {
-      new import_obsidian3.Notice("\u65E0\u6CD5\u5B9A\u4F4D\u4ECA\u65E5\u65E5\u671F\u6807\u9898");
+      new import_obsidian3.Notice("\u65E0\u6CD5\u5B9A\u4F4D\u65E5\u671F\u6807\u9898");
       return;
     }
     const content = await this.app.vault.read(file);
@@ -576,18 +631,14 @@ var FileManager = class {
     await this.app.vault.modify(file, lines.join("\n"));
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, insertIdx, 0);
     setTimeout(() => {
       const view = leaf.view;
       if (view == null ? void 0 : view.editor) {
-        const editor = view.editor;
-        editor.setCursor({ line: insertIdx, ch: entry.length });
-        editor.scrollIntoView(
-          { from: { line: insertIdx, ch: 0 }, to: { line: insertIdx, ch: entry.length } },
-          true
-        );
-        editor.focus();
+        view.editor.setCursor({ line: insertIdx, ch: entry.length });
+        view.editor.focus();
       }
-    }, 100);
+    }, 300);
     this.invalidateCache(today.year());
   }
   // ─────────────────────────────────────────────────────
@@ -795,12 +846,13 @@ var CalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     // 1-12
-    this.datesWithContent = /* @__PURE__ */ new Set();
+    this.selectedDate = null;
     this.tooltip = null;
     this.plugin = plugin;
     const now = (0, import_obsidian4.moment)();
     this.currentYear = now.year();
     this.currentMonth = now.month() + 1;
+    this.selectedDate = now.clone();
   }
   getViewType() {
     return CALENDAR_VIEW_TYPE;
@@ -818,27 +870,26 @@ var CalendarView = class extends import_obsidian4.ItemView {
     this.removeTooltip();
   }
   async refresh() {
-    await this.loadDatesWithContent();
-    this.render();
-  }
-  async loadDatesWithContent() {
-    if (this.plugin.settings.showContentDots) {
-      this.datesWithContent = await this.plugin.fileManager.getDatesWithContent(
-        this.currentYear,
-        this.currentMonth
-      );
+    try {
+      await this.plugin.fileManager.getOrCreateFile(this.currentYear);
+    } catch (e) {
     }
+    await this.render();
   }
-  render() {
+  async render() {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("work-log-calendar");
+    const datesWithContent = await this.plugin.fileManager.getDatesWithContent(
+      this.currentYear,
+      this.currentMonth
+    );
     this.renderHeader(container);
-    this.renderCalendarGrid(container);
-    this.renderStats(container);
+    this.renderCalendarGrid(container, datesWithContent);
+    this.renderActionButton(container);
   }
   // ─────────────────────────────────────────────────────
-  // Header（年月切换）
+  // Header
   // ─────────────────────────────────────────────────────
   renderHeader(container) {
     const header = container.createDiv("wl-cal-header");
@@ -892,7 +943,9 @@ var CalendarView = class extends import_obsidian4.ItemView {
       const n = (0, import_obsidian4.moment)();
       this.currentYear = n.year();
       this.currentMonth = n.month() + 1;
+      this.selectedDate = n.clone();
       await this.refresh();
+      await this.plugin.fileManager.openAndNavigateToDate(n);
     });
   }
   async navigateMonth(delta) {
@@ -911,9 +964,9 @@ var CalendarView = class extends import_obsidian4.ItemView {
     await this.refresh();
   }
   // ─────────────────────────────────────────────────────
-  // 日历格子
+  // Calendar grid
   // ─────────────────────────────────────────────────────
-  renderCalendarGrid(container) {
+  renderCalendarGrid(container, datesWithContent) {
     const grid = container.createDiv("wl-cal-grid");
     const weekStartDay = this.plugin.settings.weekStart;
     const headers = weekStartDay === "monday" ? ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"] : ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
@@ -942,37 +995,40 @@ var CalendarView = class extends import_obsidian4.ItemView {
       if (cellCount > 0 && cellCount % 7 === 0) {
         dayRow = grid.createDiv("wl-cal-row");
       }
-      const dateKey = cur.format("YYYY-MM-DD");
       const isToday = isSameDay(cur, today);
-      const hasContent = this.datesWithContent.has(dateKey);
       const isWeekend = cur.day() === 0 || cur.day() === 6;
+      let selectedCls = "";
+      if (this.selectedDate && isSameDay(cur, this.selectedDate)) {
+        selectedCls = "wl-selected";
+      }
       const cell = dayRow.createDiv({
         cls: [
           "wl-cal-cell",
           "wl-cal-day",
           isToday ? "wl-today" : "",
-          hasContent ? "wl-has-content" : "",
-          isWeekend ? "wl-weekend" : ""
+          isWeekend ? "wl-weekend" : "",
+          selectedCls
         ].filter(Boolean).join(" ")
       });
-      const dayNum = cell.createSpan({ cls: "wl-day-num", text: String(cur.date()) });
-      if (hasContent && this.plugin.settings.showContentDots) {
-        cell.createDiv({ cls: "wl-dot" });
+      cell.createSpan({ cls: "wl-day-num", text: String(cur.date()) });
+      if (datesWithContent.has(cur.format("YYYY-MM-DD"))) {
+        cell.addClass("wl-has-content");
+        cell.createDiv("wl-dot");
       }
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
+        this.selectedDate = dateCopy.clone();
+        await this.render();
         await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
       });
-      cell.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        this.showContextMenu(e, dateCopy);
-      });
-      cell.addEventListener("mouseenter", async (e) => {
-        await this.showTooltip(e, dateCopy);
-      });
-      cell.addEventListener("mouseleave", () => {
-        this.removeTooltip();
-      });
+      if (!this.app.isMobile) {
+        cell.addEventListener("mouseenter", async (e) => {
+          await this.showTooltip(e, dateCopy);
+        });
+        cell.addEventListener("mouseleave", () => {
+          this.removeTooltip();
+        });
+      }
       cur.add(1, "day");
       cellCount++;
     }
@@ -984,44 +1040,54 @@ var CalendarView = class extends import_obsidian4.ItemView {
     }
   }
   // ─────────────────────────────────────────────────────
-  // 右键菜单
+  // Action button below calendar
   // ─────────────────────────────────────────────────────
-  showContextMenu(e, date) {
-    const menu = document.createElement("div");
-    menu.className = "wl-context-menu";
-    menu.style.left = `${e.pageX}px`;
-    menu.style.top = `${e.pageY}px`;
-    const items = [
-      {
-        text: `\u{1F4D6} \u6253\u5F00 ${date.format("MM-DD")} \u8BB0\u5F55`,
-        action: async () => {
-          await this.plugin.fileManager.openAndNavigateToDate(date);
-        }
-      },
-      {
-        text: `\u270F\uFE0F \u6DFB\u52A0\u5DE5\u4F5C\u8BB0\u5F55`,
-        action: async () => {
-          await this.plugin.fileManager.insertTimestampEntry(date);
-        }
-      }
-    ];
-    for (const item of items) {
-      const el = menu.createDiv({ cls: "wl-context-item", text: item.text });
-      el.addEventListener("click", async () => {
-        document.body.removeChild(menu);
-        await item.action();
-      });
+  renderActionButton(container) {
+    const actionBar = container.createDiv("wl-action-bar");
+    const today = (0, import_obsidian4.moment)();
+    let targetDate;
+    let label;
+    if (this.selectedDate && isSameDay(this.selectedDate, today)) {
+      targetDate = today.clone();
+      label = "\uFF0B \u6DFB\u52A0\u4ECA\u65E5\u5DE5\u4F5C\u8BB0\u5F55";
+    } else if (this.selectedDate) {
+      targetDate = this.selectedDate.clone();
+      label = `\uFF0B \u6DFB\u52A0 ${targetDate.format("MM-DD")} \u5DE5\u4F5C\u8BB0\u5F55`;
+    } else {
+      targetDate = today.clone();
+      label = "\uFF0B \u6DFB\u52A0\u4ECA\u65E5\u5DE5\u4F5C\u8BB0\u5F55";
     }
-    document.body.appendChild(menu);
-    const close = () => {
-      if (document.body.contains(menu))
-        document.body.removeChild(menu);
-      document.removeEventListener("click", close);
-    };
-    setTimeout(() => document.addEventListener("click", close), 0);
+    const btn = actionBar.createEl("button", { cls: "wl-add-btn" });
+    btn.textContent = label;
+    const popup = actionBar.createDiv("wl-session-popup");
+    popup.style.display = "none";
+    const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
+    amBtn.textContent = "\u2600 \u4E0A\u5348";
+    amBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await this.plugin.fileManager.insertSessionLabel(targetDate, "\u4E0A\u5348");
+      await this.render();
+    });
+    const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
+    pmBtn.textContent = "\u{1F319} \u4E0B\u5348";
+    pmBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await this.plugin.fileManager.insertSessionLabel(targetDate, "\u4E0B\u5348");
+      await this.render();
+    });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isVisible = popup.style.display !== "none";
+      popup.style.display = isVisible ? "none" : "flex";
+    });
+    document.addEventListener("click", (ev) => {
+      if (!actionBar.contains(ev.target)) {
+        popup.style.display = "none";
+      }
+    });
   }
   // ─────────────────────────────────────────────────────
-  // Hover Tooltip
+  // Tooltip (desktop only)
   // ─────────────────────────────────────────────────────
   async showTooltip(e, date) {
     this.removeTooltip();
@@ -1032,7 +1098,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
     tt.className = "wl-tooltip";
     tt.style.left = `${e.pageX + 12}px`;
     tt.style.top = `${e.pageY + 4}px`;
-    const title = tt.createDiv({ cls: "wl-tt-title", text: date.format("YYYY-MM-DD") });
+    tt.createDiv({ cls: "wl-tt-title", text: date.format("YYYY-MM-DD") });
     const body = tt.createDiv({ cls: "wl-tt-body" });
     preview.split("\n").forEach((line) => {
       body.createDiv({ cls: "wl-tt-line", text: line });
@@ -1047,33 +1113,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
     this.tooltip = null;
   }
   // ─────────────────────────────────────────────────────
-  // 统计区域
-  // ─────────────────────────────────────────────────────
-  renderStats(container) {
-    const stats = container.createDiv("wl-stats");
-    const daysCount = this.datesWithContent.size;
-    stats.createDiv({
-      cls: "wl-stat-item",
-      text: `\u{1F4C5} \u672C\u6708\u8BB0\u5F55\uFF1A${daysCount} \u5929`
-    });
-    const now = (0, import_obsidian4.moment)();
-    if (now.year() === this.currentYear && now.month() + 1 === this.currentMonth) {
-      const weekStart = this.plugin.settings.weekStart === "monday" ? now.clone().startOf("isoWeek") : now.clone().startOf("week");
-      const weekEnd = weekStart.clone().add(6, "days");
-      let weekDays = 0;
-      this.datesWithContent.forEach((d) => {
-        const m = (0, import_obsidian4.moment)(d);
-        if (m.isBetween(weekStart, weekEnd, "day", "[]"))
-          weekDays++;
-      });
-      stats.createDiv({
-        cls: "wl-stat-item",
-        text: `\u{1F4CA} \u672C\u5468\u8BB0\u5F55\uFF1A${weekDays} \u5929`
-      });
-    }
-  }
-  // ─────────────────────────────────────────────────────
-  // 公开方法：切换到指定月份
+  // Public
   // ─────────────────────────────────────────────────────
   async navigateTo(year, month) {
     this.currentYear = year;

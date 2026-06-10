@@ -196,27 +196,87 @@
 
 /* ─── 右键菜单 ─────────────────────────────────────── */
 .wl-context-menu {
-  position: fixed;
-  z-index: 10000;
+  display: none;
+}
+
+.wl-context-item {
+  display: none;
+}
+
+/* 选中日期高亮 */
+.wl-selected {
+  border-color: var(--interactive-accent) !important;
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.wl-selected.wl-today {
+  border-color: var(--text-on-accent) !important;
+  box-shadow: 0 0 0 1px var(--text-on-accent);
+}
+
+/* ─── 底部添加按钮 ─────────────────────────────────── */
+.wl-action-bar {
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--background-modifier-border);
+  position: relative;
+}
+
+.wl-add-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-m);
+  cursor: pointer;
+  font-size: 0.88em;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.wl-add-btn:hover {
+  opacity: 0.85;
+}
+
+/* 上午/下午选择弹窗 */
+.wl-session-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-l);
-  min-width: 160px;
-  overflow: hidden;
-  padding: 4px 0;
+  margin-bottom: 4px;
+  z-index: 100;
 }
 
-.wl-context-item {
-  padding: 6px 14px;
+.wl-session-opt {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  border-radius: var(--radius-s);
   cursor: pointer;
-  font-size: 0.88em;
-  color: var(--text-normal);
-  transition: background 0.1s;
+  font-size: 0.85em;
+  font-weight: 600;
+  transition: opacity 0.15s;
+  color: #fff;
 }
 
-.wl-context-item:hover {
-  background: var(--background-modifier-hover);
+.wl-session-opt:hover {
+  opacity: 0.85;
+}
+
+.wl-session-am {
+  background: #f59e0b;
+}
+
+.wl-session-pm {
+  background: #6366f1;
 }
 
 /* ─── Hover Tooltip ────────────────────────────────── */
