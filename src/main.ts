@@ -12,10 +12,13 @@ import { WorkLogSettings, WorkLogSettingTab, DEFAULT_SETTINGS } from "./settings
 import { FileManager } from "./fileManager";
 import { CalendarView, CALENDAR_VIEW_TYPE } from "./calendarView";
 import { SearchView, SEARCH_VIEW_TYPE, getMonthStats } from "./statistics";
+import { parseDayTitle } from "./dateUtils";
 
 export default class WorkLogPlugin extends Plugin {
   settings: WorkLogSettings;
   fileManager: FileManager;
+  private lastSyncedDateKey: string | null = null; // 避免重复同步
+  private prevGenerationMode: "full_year" | "up_to_today" | null = null; // 用于检测模式切换
 
   async onload() {
     await this.loadSettings();
@@ -163,19 +166,27 @@ export default class WorkLogPlugin extends Plugin {
       })
     );
 
-    // ─── 初始化：打开今年文件（如果配置了自动生成）───────────────
+    // ─── 初始化：打开今年文件（根据生成模式自动创建或补充）───────────────
     this.app.workspace.onLayoutReady(async () => {
-      if (this.settings.autoGenerateYearStructure) {
-        const year = moment().year();
-        const filePath = this.fileManager.getFilePath(year);
-        const existing = this.app.vault.getAbstractFileByPath(filePath);
+      const year = moment().year();
+      const filePath = this.fileManager.getFilePath(year);
+      const existing = this.app.vault.getAbstractFileByPath(filePath);
+
+      if (this.settings.generationMode === "full_year") {
+        // 预生成全年：文件不存在则自动创建
         if (!existing) {
-          // 仅当文件不存在时才静默创建
           try {
             await this.fileManager.getOrCreateFile(year);
           } catch {
-            // 忽略错误，避免影响 Obsidian 启动
+            // 忽略错误
           }
+        }
+      } else {
+        // 每天新增到当前日：文件不存在则生成到今天，已存在则补充到今天
+        try {
+          await this.fileManager.ensureUpToToday(year);
+        } catch {
+          // 忽略错误
         }
       }
 
@@ -184,6 +195,11 @@ export default class WorkLogPlugin extends Plugin {
         await this.activateCalendarView(false);
       }
     });
+
+    // ─── 编辑器光标同步到日历 ─────────────────────────────────
+    this.registerInterval(
+      window.setInterval(() => this.syncCursorDateToCalendar(), 300)
+    );
   }
 
   onunload() {
@@ -192,15 +208,41 @@ export default class WorkLogPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // 兼容旧版本：autoGenerateYearStructure → generationMode
+    if ((data as any).autoGenerateYearStructure !== undefined) {
+      data.generationMode = (data as any).autoGenerateYearStructure ? "full_year" : "up_to_today";
+      delete (data as any).autoGenerateYearStructure;
+      await this.saveData(data);
+    }
+    this.settings = data;
+    this.prevGenerationMode = this.settings.generationMode; // 记住初始值
   }
 
   async saveSettings() {
+    const modeChanged = this.prevGenerationMode !== null
+      && this.settings.generationMode !== this.prevGenerationMode;
+
     await this.saveData(this.settings);
     if (this.fileManager) {
       this.fileManager.updateSettings(this.settings);
     }
-    // 刷新日历视图
+
+    // 检测生成模式切换，自动补全或裁剪日期结构
+    if (modeChanged) {
+      const year = moment().year();
+      if (this.settings.generationMode === "full_year") {
+        // 从"每天"改为"全年"：补全从今天到年底的日期
+        await this.fileManager.repairYearStructure(year);
+        new Notice("已切换为「每年自动生成全年」，文件已补全到年底");
+      } else {
+        // 从"全年"改为"每天"：删除今天之后的日期和周标题
+        await this.fileManager.trimAfterToday(year);
+        new Notice("已切换为「每天新增到当前日」，文件已裁剪到当前日");
+      }
+    }
+
+    this.prevGenerationMode = this.settings.generationMode;
     this.refreshCalendarViews();
   }
 
@@ -208,6 +250,46 @@ export default class WorkLogPlugin extends Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
       const view = leaf.view as CalendarView;
       view.refresh();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 编辑器光标同步到日历
+  // ─────────────────────────────────────────────────────
+
+  private syncCursorDateToCalendar(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) return;
+
+    const editor = view.editor;
+    if (!editor) return;
+
+    const cursor = editor.getCursor();
+    const line = editor.getLine(cursor.line);
+    if (!line) return;
+
+    // 只处理四级标题行（日期标题）
+    if (!line.startsWith("#### ")) {
+      this.lastSyncedDateKey = null;
+      return;
+    }
+
+    // 用 parseDayTitle 解析，兼容多种日期格式
+    const m = parseDayTitle(line, this.settings.dateFormat);
+    if (!m || !m.isValid()) {
+      this.lastSyncedDateKey = null;
+      return;
+    }
+
+    const dateKey = m.format("YYYY-MM-DD");
+    if (dateKey === this.lastSyncedDateKey) return; // 同一行，跳过
+
+    this.lastSyncedDateKey = dateKey;
+
+    // 通知所有日历视图选中此日期
+    for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
+      const calView = leaf.view as CalendarView;
+      calView.selectDate(m);
     }
   }
 
@@ -233,14 +315,7 @@ export default class WorkLogPlugin extends Plugin {
       return;
     }
 
-    let leaf;
-    if (this.settings.calendarPosition === "right") {
-      leaf = this.app.workspace.getRightLeaf(false);
-    } else if (this.settings.calendarPosition === "left") {
-      leaf = this.app.workspace.getLeftLeaf(false);
-    } else {
-      leaf = this.app.workspace.getLeaf("tab");
-    }
+    const leaf = this.app.workspace.getRightLeaf(false);
 
     if (leaf) {
       await leaf.setViewState({ type: CALENDAR_VIEW_TYPE, active: true });

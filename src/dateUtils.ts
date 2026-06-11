@@ -173,15 +173,20 @@ export function formatDayTitle(date: moment.Moment, settings: WorkLogSettings): 
 
 /**
  * 解析四级标题的日期（返回 moment 或 null）
- * 标题格式：#### YYYY-MM-DD 星期X  或  #### YYYY-MM-DD Monday
+ * 先尝试当前格式，再尝试常见旧格式，兼容格式变更
  */
 export function parseDayTitle(heading: string, dateFormat: string): moment.Moment | null {
   // 去除前缀 ####
   const stripped = heading.replace(/^####\s+/, "").trim();
   // 取第一个空格之前的部分作为日期字符串
   const datePart = stripped.split(/\s+/)[0];
-  const m = moment(datePart, dateFormat, true);
-  return m.isValid() ? m : null;
+
+  const formatsToTry = [dateFormat, "YYYY-MM-DD", "MM-DD", "M月D日", "YYYY年MM月DD日"];
+  for (const fmt of formatsToTry) {
+    const m = moment(datePart, fmt, true);
+    if (m.isValid()) return m;
+  }
+  return null;
 }
 
 /**

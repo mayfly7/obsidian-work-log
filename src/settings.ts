@@ -12,14 +12,12 @@ export interface WorkLogSettings {
   weekStart: "monday" | "sunday";
   /** 星期几语言：'zh' | 'en' */
   weekdayLanguage: "zh" | "en";
-  /** 是否自动生成全年框架 */
-  autoGenerateYearStructure: boolean;
+  /** 生成模式：'full_year'=每年自动生成全年, 'up_to_today'=每天只新增到当前日 */
+  generationMode: "full_year" | "up_to_today";
   /** 插入时间戳格式 */
   timestampFormat: string;
   /** 是否在日历上标记有内容的日期 */
   showContentDots: boolean;
-  /** 日历视图默认位置 */
-  calendarPosition: "right" | "left" | "tab";
   /** 文件头部模板 */
   fileHeaderTemplate: string;
 }
@@ -30,10 +28,9 @@ export const DEFAULT_SETTINGS: WorkLogSettings = {
   dateFormat: "YYYY-MM-DD",
   weekStart: "monday",
   weekdayLanguage: "zh",
-  autoGenerateYearStructure: true,
+  generationMode: "up_to_today",
   timestampFormat: "HH:mm",
   showContentDots: true,
-  calendarPosition: "right",
   fileHeaderTemplate: "# {{year}}年工作日志",
 };
 
@@ -98,14 +95,30 @@ export class WorkLogSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("日期格式")
-      .setDesc("四级标题中日期的显示格式（Moment.js 格式），默认 YYYY-MM-DD")
-      .addText((text) =>
-        text
-          .setPlaceholder("YYYY-MM-DD")
+      .setDesc("四级标题中日期的显示格式")
+      .addDropdown((dd) =>
+        dd
+          .addOption("YYYY-MM-DD", "YYYY-MM-DD（2026-06-11）")
+          .addOption("MM-DD", "MM-DD（06-11）")
+          .addOption("YYYY年MM月DD日", "YYYY年MM月DD日（2026年06月11日）")
+          .addOption("M月D日", "M月D日（6月11日）")
           .setValue(this.plugin.settings.dateFormat)
           .onChange(async (value) => {
-            this.plugin.settings.dateFormat = value.trim() || "YYYY-MM-DD";
+            this.plugin.settings.dateFormat = value;
             await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("应用新日期格式")
+      .setDesc("把当前年度文件中的旧格式日期标题全部替换为上方选择的格式")
+      .addButton((btn) =>
+        btn
+          .setButtonText("一键迁移")
+          .setCta()
+          .onClick(async () => {
+            const year = new Date().getFullYear();
+            await this.plugin.fileManager.migrateDateFormat(year);
           })
       );
 
@@ -154,13 +167,15 @@ export class WorkLogSettingTab extends PluginSettingTab {
     containerEl.createEl("h3", { text: "自动化" });
 
     new Setting(containerEl)
-      .setName("自动生成全年框架")
-      .setDesc("每年首次打开时自动生成全年所有日期结构")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoGenerateYearStructure)
+      .setName("日期生成模式")
+      .setDesc("新文件的日期结构生成方式")
+      .addDropdown((dd) =>
+        dd
+          .addOption("full_year", "每年自动生成全年")
+          .addOption("up_to_today", "每天新增到当前日")
+          .setValue(this.plugin.settings.generationMode)
           .onChange(async (value) => {
-            this.plugin.settings.autoGenerateYearStructure = value;
+            this.plugin.settings.generationMode = value as "full_year" | "up_to_today";
             await this.plugin.saveSettings();
           })
       );
@@ -176,20 +191,6 @@ export class WorkLogSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.showContentDots)
           .onChange(async (value) => {
             this.plugin.settings.showContentDots = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("日历视图默认位置")
-      .addDropdown((dd) =>
-        dd
-          .addOption("right", "右侧边栏")
-          .addOption("left", "左侧边栏")
-          .addOption("tab", "主区域标签页")
-          .setValue(this.plugin.settings.calendarPosition)
-          .onChange(async (value) => {
-            this.plugin.settings.calendarPosition = value as "right" | "left" | "tab";
             await this.plugin.saveSettings();
           })
       );

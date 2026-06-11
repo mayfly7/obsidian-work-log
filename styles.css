@@ -178,6 +178,28 @@
   font-weight: 600;
 }
 
+/* 未完成待办红色标记 */
+.wl-todo-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ef4444;
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 8px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5px;
+  min-height: 5px;
+}
+
+.wl-today .wl-todo-dot {
+  background: #fca5a5;
+}
+
 /* ─── 统计区域 ─────────────────────────────────────── */
 .wl-stats {
   display: flex;
@@ -212,6 +234,19 @@
 .wl-selected.wl-today {
   border-color: var(--text-on-accent) !important;
   box-shadow: 0 0 0 1px var(--text-on-accent);
+}
+
+/* Hover 预览选中框 */
+.wl-hover {
+  border-color: var(--interactive-accent) !important;
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wl-hover.wl-today {
+  border-color: var(--text-on-accent) !important;
+  box-shadow: 0 0 0 1px var(--text-on-accent);
+  background: var(--interactive-accent-hover, var(--interactive-accent));
 }
 
 /* ─── 底部添加按钮 ─────────────────────────────────── */
@@ -279,6 +314,73 @@
   background: #6366f1;
 }
 
+/* 添加待办按钮 */
+.wl-todo-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 0;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-m);
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.wl-todo-btn:hover {
+  opacity: 0.85;
+}
+
+/* ─── 待办列表（日历下方）─────────────────────────── */
+.wl-todo-section {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-m);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.wl-todo-label {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.wl-todo-item {
+  font-size: 0.82em;
+  padding: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  gap: 4px;
+}
+
+.wl-clickable {
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  padding: 2px 4px !important;
+}
+
+.wl-clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.wl-todo-date {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.wl-todo-text {
+  color: #ef4444;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── Hover Tooltip ────────────────────────────────── */
 .wl-tooltip {
   position: fixed;
@@ -311,6 +413,25 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 待办 tooltip */
+.wl-tt-todos {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wl-tt-todo-line {
+  font-size: 0.8em;
+  color: #ef4444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
 }
 
 /* ─── 搜索视图 ─────────────────────────────────────── */

@@ -47,9 +47,9 @@ export class FileManager {
     let file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
     if (!file) {
       await this.ensureDirectory(this.settings.logDirectory);
-      const content = this.settings.autoGenerateYearStructure
+      const content = this.settings.generationMode === "full_year"
         ? await this.generateFullYearContent(year)
-        : this.generateFileHeader(year);
+        : await this.generateUpToTodayContent(year);
       file = await this.app.vault.create(filePath, content);
       new Notice(`已创建 ${year} 年工作日志文件`);
     }
@@ -88,6 +88,40 @@ export class FileManager {
         lines.push("");
 
         for (const day of wg.days) {
+          lines.push(`#### ${formatDayTitle(day, this.settings)}`);
+          lines.push("");
+        }
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * 生成从1月1日到今天的日期结构（每天新增模式）
+   */
+  async generateUpToTodayContent(year: number): Promise<string> {
+    const today = moment();
+    const groups = buildYearStructure(year, this.settings);
+    const lines: string[] = [];
+
+    lines.push(this.generateFileHeader(year).trimEnd());
+    lines.push("");
+
+    for (const mg of groups) {
+      lines.push(`## ${formatMonthHeading(mg.month)}`);
+      lines.push("");
+
+      for (const wg of mg.weeks) {
+        lines.push(`### ${formatWeekTitle(wg, year)}`);
+        lines.push("");
+
+        for (const day of wg.days) {
+          // 只生成到今天的日期
+          if (today.year() === year && day.isAfter(today, "day")) {
+            break;
+          }
+          // 历史年份则生成全年
           lines.push(`#### ${formatDayTitle(day, this.settings)}`);
           lines.push("");
         }
@@ -169,17 +203,9 @@ export class FileManager {
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
 
-    // 等待编辑器渲染完成后定位
+    // 等待编辑器渲染完成后定位（多次重试，防止大文件尚未渲染完毕）
     if (lineNo !== undefined) {
-      // 使用 setTimeout 确保编辑器已加载
-      setTimeout(() => {
-        const view = leaf.view as any;
-        if (view?.editor) {
-          const editor = view.editor;
-          editor.setCursor({ line: lineNo, ch: 0 });
-          editor.scrollIntoView({ from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } }, true);
-        }
-      }, 100);
+      this.scrollToLineWithRetry(leaf, lineNo, 0);
     }
   }
 
@@ -354,6 +380,35 @@ export class FileManager {
   }
 
   // ─────────────────────────────────────────────────────
+  // 滚动定位工具（多次重试，确保大文件编辑器就绪）
+  // ─────────────────────────────────────────────────────
+
+  private scrollToLineWithRetry(leaf: any, lineNo: number, attempt: number): void {
+    const view = leaf.view as any;
+    const editor = view?.editor;
+    if (editor && editor.lineCount() > lineNo) {
+      editor.setCursor({ line: lineNo, ch: 0 });
+      editor.scrollIntoView(
+        { from: { line: lineNo, ch: 0 }, to: { line: lineNo, ch: 0 } },
+        true
+      );
+      return;
+    }
+    // 编辑器还未就绪，最多重试 10 次（总计约 1.5 秒）
+    if (attempt < 10) {
+      setTimeout(() => this.scrollToLineWithRetry(leaf, lineNo, attempt + 1), 150);
+    }
+  }
+
+  /** 跳转到指定年份文件的指定行 */
+  async jumpToLine(year: number, lineNo: number): Promise<void> {
+    const file = await this.getOrCreateFile(year);
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, lineNo, 0);
+  }
+
+  // ─────────────────────────────────────────────────────
   // 结构修复
   // ─────────────────────────────────────────────────────
 
@@ -413,12 +468,256 @@ export class FileManager {
     new Notice(`结构修复完成，补全了 ${repaired} 处缺失标题`);
   }
 
+  /**
+   * 迁移日期格式：把文件中旧格式的日期标题替换为当前设置的日期格式
+   */
+  async migrateDateFormat(year: number): Promise<void> {
+    const file = await this.getOrCreateFile(year);
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+
+    let changed = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.startsWith("#### ")) continue;
+
+      const m = parseDayTitle(line, this.settings.dateFormat);
+      if (!m) continue;
+
+      const newTitle = `#### ${formatDayTitle(m, this.settings)}`;
+      // 只替换日期+星期部分，保留冒号后的内容
+      const weekdayPattern = /^(####\s+).+?\s+(星期[一二三四五六日]|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/;
+      const newLine = line.replace(weekdayPattern, newTitle);
+      if (newLine !== line) {
+        lines[i] = newLine;
+        changed++;
+      }
+    }
+
+    if (changed > 0) {
+      await this.app.vault.modify(file, lines.join("\n"));
+      this.invalidateCache(year);
+      new Notice(`${year} 年共迁移 ${changed} 条日期标题为 ${this.settings.dateFormat} 格式`);
+    } else {
+      new Notice(`${year} 年无需迁移，所有日期标题已是 ${this.settings.dateFormat} 格式`);
+    }
+  }
+
+  /**
+   * 确保文件包含从年初到今天的日期结构（up_to_today 模式）
+   * 文件不存在则创建，存在则补充缺失的日期标题
+   */
+  async ensureUpToToday(year: number): Promise<void> {
+    const file = await this.getOrCreateFile(year);
+    const today = moment();
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+
+    // 收集已有的日期
+    const existingDays = new Set<string>();
+    for (const line of lines) {
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        if (m) existingDays.add(m.format("YYYY-MM-DD"));
+      }
+    }
+
+    // 需要补充的日期：从1月1日到今天，且当年
+    const groups = buildYearStructure(year, this.settings);
+    let repaired = 0;
+
+    for (const mg of groups) {
+      for (const wg of mg.weeks) {
+        for (const day of wg.days) {
+          const dateKey = day.format("YYYY-MM-DD");
+          // 只处理到今天的日期
+          if (year === today.year() && day.isAfter(today, "day")) break;
+          if (existingDays.has(dateKey)) continue;
+
+          await this.insertMissingDateBlock(file, day);
+          repaired++;
+          await this.getDateLineMap(file); // 刷新缓存
+          const cm = await this.buildCache(file); // 重建缓存
+          // 缓存已在 insertMissingDateBlock 中失效，重建后继续
+          await this.sleep(50);
+        }
+      }
+    }
+
+    this.invalidateCache(year);
+    if (repaired > 0) {
+      new Notice(`${year} 年已补充 ${repaired} 天日期结构`);
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /**
+   * 切换为每天新增模式时，删除今天之后的所有日期和周标题
+   */
+  async trimAfterToday(year: number): Promise<void> {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
+    if (!file) return;
+
+    const today = moment();
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+
+    // 找到今天的日期标题所在行
+    const todayFormatted = today.format(this.settings.dateFormat);
+    let todayLineIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("#### ")) {
+        const weekdays = ["星期一","星期二","星期三","星期四","星期五","星期六","星期日",
+          "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+        if (weekdays.some((w) => line.includes(w)) && line.includes(todayFormatted)) {
+          // 还需要确认一下：看下一行开始是不是真的有内容
+          // 找该日期块结束的位置（下一个 #### 或 ## 之前）
+          todayLineIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (todayLineIdx === -1) {
+      // 没找到今天的标题，用日期匹配所有 #### 行
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith("#### ")) {
+          const m = parseDayTitle(line, this.settings.dateFormat);
+          if (m && m.isValid()) {
+            if (m.isSameOrAfter(today, "day")) {
+              todayLineIdx = i;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (todayLineIdx === -1) return; // 没有需要处理的
+
+    // 找到今天日期块的结束位置（下一个 #### 之前）
+    let todayBlockEnd = todayLineIdx + 1;
+    for (let i = todayLineIdx + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("#### ") || lines[i].startsWith("## ")) {
+        todayBlockEnd = i;
+        break;
+      }
+      todayBlockEnd = i + 1;
+    }
+
+    // 保留行数：到 todayBlockEnd 为止
+    let keepTo = todayBlockEnd;
+
+    // 检查保留部分末尾是否有空的周标题（该周在今天后没有日期了）
+    while (keepTo > 0 && lines[keepTo - 1].trim() === "")
+      keepTo--; // 去掉尾部空行
+
+    // 如果保留部分以空行+周标题结尾，删除空行和周标题
+    while (keepTo > 0) {
+      const lastLine = lines[keepTo - 1].trim();
+      if (lastLine === "") {
+        keepTo--;
+        continue;
+      }
+      if (lastLine.startsWith("### ")) {
+        keepTo--;
+        // 去掉前面的空行
+        while (keepTo > 0 && lines[keepTo - 1].trim() === "") keepTo--;
+        continue;
+      }
+      break;
+    }
+
+    const newLines = lines.slice(0, keepTo);
+    // 确保末尾有换行
+    if (newLines[newLines.length - 1] !== "") newLines.push("");
+
+    await this.app.vault.modify(file, newLines.join("\n"));
+    this.invalidateCache(year);
+  }
+
   // ─────────────────────────────────────────────────────
-  // 快速插入带时间戳条目
+  // 快速插入条目
   // ─────────────────────────────────────────────────────
 
   /**
-   * 在今日日期区块下追加带时间戳的工作条目
+   * 在指定日期区块下追加工作记录标签（上午/下午）
+   */
+  async insertSessionLabel(date: moment.Moment, label: string): Promise<void> {
+    const file = await this.getOrCreateFile(date.year());
+    let lineMap = await this.getDateLineMap(file);
+    const dateKey = date.format("YYYY-MM-DD");
+
+    if (!lineMap.has(dateKey)) {
+      await this.insertMissingDateBlock(file, date);
+      lineMap = await this.buildCache(file);
+    }
+
+    const headingLine = lineMap.get(dateKey);
+    if (headingLine === undefined) {
+      new Notice("无法定位日期标题");
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+
+    const isTodo = label.includes("待办");
+    const entry = isTodo ? `- [ ] ${label.replace("☐ ", "")}` : `- ${label}`;
+
+    // 扫描该日期区块，检查是否已存在相同标签
+    let insertIdx = headingLine + 1;
+    for (let i = headingLine + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("## ") || lines[i].startsWith("### ") || lines[i].startsWith("#### ")) {
+        break;
+      }
+      const trimmed = lines[i].trim();
+      if (trimmed === `- ${label}` || trimmed === `- [ ] ${label.replace("☐ ", "")}`) {
+        // 已有此标签：定位光标到该行末尾
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        this.scrollToLineWithRetry(leaf, i, 0);
+        setTimeout(() => {
+          const view = leaf.view as any;
+          if (view?.editor) {
+            view.editor.setCursor({ line: i, ch: lines[i].length });
+            view.editor.focus();
+          }
+        }, 300);
+        return;
+      }
+      if (trimmed !== "") {
+        insertIdx = i + 1;
+      } else {
+        insertIdx = i;
+      }
+    }
+
+    lines.splice(insertIdx, 0, entry);
+    await this.app.vault.modify(file, lines.join("\n"));
+
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, insertIdx, 0);
+    setTimeout(() => {
+      const view = leaf.view as any;
+      if (view?.editor) {
+        view.editor.setCursor({ line: insertIdx, ch: entry.length });
+        view.editor.focus();
+      }
+    }, 300);
+
+    this.invalidateCache(date.year());
+  }
+
+  /**
+   * 在指定日期区块下追加带时间戳的工作条目
    */
   async insertTimestampEntry(customDate?: moment.Moment): Promise<void> {
     const today = customDate || moment();
@@ -433,7 +732,7 @@ export class FileManager {
 
     const headingLine = lineMap.get(dateKey);
     if (headingLine === undefined) {
-      new Notice("无法定位今日日期标题");
+      new Notice("无法定位日期标题");
       return;
     }
 
@@ -462,18 +761,15 @@ export class FileManager {
     // 打开文件并将光标定位到新行
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, insertIdx, 0);
+    // 聚焦到编辑器
     setTimeout(() => {
       const view = leaf.view as any;
       if (view?.editor) {
-        const editor = view.editor;
-        editor.setCursor({ line: insertIdx, ch: entry.length });
-        editor.scrollIntoView(
-          { from: { line: insertIdx, ch: 0 }, to: { line: insertIdx, ch: entry.length } },
-          true
-        );
-        editor.focus();
+        view.editor.setCursor({ line: insertIdx, ch: entry.length });
+        view.editor.focus();
       }
-    }, 100);
+    }, 300);
 
     this.invalidateCache(today.year());
   }
@@ -553,6 +849,97 @@ export class FileManager {
     }
 
     return previewLines.join("\n");
+  }
+
+  /**
+   * 获取指定日期的未完成待办列表（- [ ] 开头的条目）
+   */
+  async getIncompleteTodosForDate(date: moment.Moment): Promise<string[]> {
+    const year = date.year();
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
+    if (!file) return [];
+
+    const lineMap = await this.getDateLineMap(file);
+    const dateKey = date.format("YYYY-MM-DD");
+    const headingLine = lineMap.get(dateKey);
+    if (headingLine === undefined) return [];
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const todos: string[] = [];
+
+    for (let i = headingLine + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("## ") || line.startsWith("### ") || line.startsWith("#### ")) break;
+      if (line.trim().startsWith("- [ ]")) {
+        todos.push(line.trim().replace(/^- \[ \]\s*/, ""));
+      }
+    }
+    return todos;
+  }
+
+  /**
+   * 获取指定月份所有日期的未完成待办数（用于日历标记）
+   */
+  async getIncompleteTodoMap(year: number, month: number): Promise<Map<string, number>> {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
+    if (!file) return new Map();
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const result = new Map<string, number>();
+    let currentDateKey: string | null = null;
+
+    for (const line of lines) {
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+      } else if (currentDateKey && line.trim().startsWith("- [ ]")) {
+        const d = currentDateKey;
+        result.set(d, (result.get(d) || 0) + 1);
+      } else if (line.startsWith("## ") || line.startsWith("### ")) {
+        currentDateKey = null;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 获取当前文件中所有未完成待办（附带日期）
+   */
+  async getAllIncompleteTodos(year: number): Promise<{ date: string; todos: { text: string; line: number }[] }[]> {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
+    if (!file) return [];
+
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const result: { date: string; todos: { text: string; line: number }[] }[] = [];
+    let currentDateKey: string | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("MM-DD") : null;
+      } else if (currentDateKey && line.trim().startsWith("- [ ]")) {
+        const todoText = line.trim().replace(/^- \[ \]\s*/, "");
+        // 找最后一个相同日期的条目或新建
+        const last = result[result.length - 1];
+        if (last && last.date === currentDateKey) {
+          last.todos.push({ text: todoText, line: i });
+        } else {
+          result.push({ date: currentDateKey, todos: [{ text: todoText, line: i }] });
+        }
+      } else if (line.startsWith("## ") || line.startsWith("### ")) {
+        currentDateKey = null;
+      }
+    }
+
+    return result;
   }
 
   // ─────────────────────────────────────────────────────

@@ -37,10 +37,9 @@ var DEFAULT_SETTINGS = {
   dateFormat: "YYYY-MM-DD",
   weekStart: "monday",
   weekdayLanguage: "zh",
-  autoGenerateYearStructure: true,
+  generationMode: "up_to_today",
   timestampFormat: "HH:mm",
   showContentDots: true,
-  calendarPosition: "right",
   fileHeaderTemplate: "# {{year}}\u5E74\u5DE5\u4F5C\u65E5\u5FD7"
 };
 var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -72,10 +71,16 @@ var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     containerEl.createEl("h3", { text: "\u65E5\u671F\u4E0E\u65F6\u95F4" });
-    new import_obsidian.Setting(containerEl).setName("\u65E5\u671F\u683C\u5F0F").setDesc("\u56DB\u7EA7\u6807\u9898\u4E2D\u65E5\u671F\u7684\u663E\u793A\u683C\u5F0F\uFF08Moment.js \u683C\u5F0F\uFF09\uFF0C\u9ED8\u8BA4 YYYY-MM-DD").addText(
-      (text) => text.setPlaceholder("YYYY-MM-DD").setValue(this.plugin.settings.dateFormat).onChange(async (value) => {
-        this.plugin.settings.dateFormat = value.trim() || "YYYY-MM-DD";
+    new import_obsidian.Setting(containerEl).setName("\u65E5\u671F\u683C\u5F0F").setDesc("\u56DB\u7EA7\u6807\u9898\u4E2D\u65E5\u671F\u7684\u663E\u793A\u683C\u5F0F").addDropdown(
+      (dd) => dd.addOption("YYYY-MM-DD", "YYYY-MM-DD\uFF082026-06-11\uFF09").addOption("MM-DD", "MM-DD\uFF0806-11\uFF09").addOption("YYYY\u5E74MM\u6708DD\u65E5", "YYYY\u5E74MM\u6708DD\u65E5\uFF082026\u5E7406\u670811\u65E5\uFF09").addOption("M\u6708D\u65E5", "M\u6708D\u65E5\uFF086\u670811\u65E5\uFF09").setValue(this.plugin.settings.dateFormat).onChange(async (value) => {
+        this.plugin.settings.dateFormat = value;
         await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("\u5E94\u7528\u65B0\u65E5\u671F\u683C\u5F0F").setDesc("\u628A\u5F53\u524D\u5E74\u5EA6\u6587\u4EF6\u4E2D\u7684\u65E7\u683C\u5F0F\u65E5\u671F\u6807\u9898\u5168\u90E8\u66FF\u6362\u4E3A\u4E0A\u65B9\u9009\u62E9\u7684\u683C\u5F0F").addButton(
+      (btn) => btn.setButtonText("\u4E00\u952E\u8FC1\u79FB").setCta().onClick(async () => {
+        const year = new Date().getFullYear();
+        await this.plugin.fileManager.migrateDateFormat(year);
       })
     );
     new import_obsidian.Setting(containerEl).setName("\u5468\u8D77\u59CB\u65E5").setDesc("\u6BCF\u5468\u4ECE\u54EA\u4E00\u5929\u5F00\u59CB").addDropdown(
@@ -97,9 +102,9 @@ var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     containerEl.createEl("h3", { text: "\u81EA\u52A8\u5316" });
-    new import_obsidian.Setting(containerEl).setName("\u81EA\u52A8\u751F\u6210\u5168\u5E74\u6846\u67B6").setDesc("\u6BCF\u5E74\u9996\u6B21\u6253\u5F00\u65F6\u81EA\u52A8\u751F\u6210\u5168\u5E74\u6240\u6709\u65E5\u671F\u7ED3\u6784").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.autoGenerateYearStructure).onChange(async (value) => {
-        this.plugin.settings.autoGenerateYearStructure = value;
+    new import_obsidian.Setting(containerEl).setName("\u65E5\u671F\u751F\u6210\u6A21\u5F0F").setDesc("\u65B0\u6587\u4EF6\u7684\u65E5\u671F\u7ED3\u6784\u751F\u6210\u65B9\u5F0F").addDropdown(
+      (dd) => dd.addOption("full_year", "\u6BCF\u5E74\u81EA\u52A8\u751F\u6210\u5168\u5E74").addOption("up_to_today", "\u6BCF\u5929\u65B0\u589E\u5230\u5F53\u524D\u65E5").setValue(this.plugin.settings.generationMode).onChange(async (value) => {
+        this.plugin.settings.generationMode = value;
         await this.plugin.saveSettings();
       })
     );
@@ -107,12 +112,6 @@ var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("\u6807\u8BB0\u6709\u5185\u5BB9\u7684\u65E5\u671F").setDesc("\u5728\u65E5\u5386\u4E0A\u7528\u5706\u70B9\u6807\u8BB0\u6709\u5DE5\u4F5C\u5185\u5BB9\u7684\u65E5\u671F").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showContentDots).onChange(async (value) => {
         this.plugin.settings.showContentDots = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("\u65E5\u5386\u89C6\u56FE\u9ED8\u8BA4\u4F4D\u7F6E").addDropdown(
-      (dd) => dd.addOption("right", "\u53F3\u4FA7\u8FB9\u680F").addOption("left", "\u5DE6\u4FA7\u8FB9\u680F").addOption("tab", "\u4E3B\u533A\u57DF\u6807\u7B7E\u9875").setValue(this.plugin.settings.calendarPosition).onChange(async (value) => {
-        this.plugin.settings.calendarPosition = value;
         await this.plugin.saveSettings();
       })
     );
@@ -221,8 +220,13 @@ function formatDayTitle(date, settings) {
 function parseDayTitle(heading, dateFormat) {
   const stripped = heading.replace(/^####\s+/, "").trim();
   const datePart = stripped.split(/\s+/)[0];
-  const m = (0, import_obsidian2.moment)(datePart, dateFormat, true);
-  return m.isValid() ? m : null;
+  const formatsToTry = [dateFormat, "YYYY-MM-DD", "MM-DD", "M\u6708D\u65E5", "YYYY\u5E74MM\u6708DD\u65E5"];
+  for (const fmt of formatsToTry) {
+    const m = (0, import_obsidian2.moment)(datePart, fmt, true);
+    if (m.isValid())
+      return m;
+  }
+  return null;
 }
 function isSameDay(a, b) {
   return a.isSame(b, "day");
@@ -258,7 +262,7 @@ var FileManager = class {
     let file = this.app.vault.getAbstractFileByPath(filePath);
     if (!file) {
       await this.ensureDirectory(this.settings.logDirectory);
-      const content = this.settings.autoGenerateYearStructure ? await this.generateFullYearContent(year) : this.generateFileHeader(year);
+      const content = this.settings.generationMode === "full_year" ? await this.generateFullYearContent(year) : await this.generateUpToTodayContent(year);
       file = await this.app.vault.create(filePath, content);
       new import_obsidian3.Notice(`\u5DF2\u521B\u5EFA ${year} \u5E74\u5DE5\u4F5C\u65E5\u5FD7\u6587\u4EF6`);
     }
@@ -289,6 +293,32 @@ var FileManager = class {
         lines.push(`### ${formatWeekTitle(wg, year)}`);
         lines.push("");
         for (const day of wg.days) {
+          lines.push(`#### ${formatDayTitle(day, this.settings)}`);
+          lines.push("");
+        }
+      }
+    }
+    return lines.join("\n");
+  }
+  /**
+   * 生成从1月1日到今天的日期结构（每天新增模式）
+   */
+  async generateUpToTodayContent(year) {
+    const today = (0, import_obsidian3.moment)();
+    const groups = buildYearStructure(year, this.settings);
+    const lines = [];
+    lines.push(this.generateFileHeader(year).trimEnd());
+    lines.push("");
+    for (const mg of groups) {
+      lines.push(`## ${formatMonthHeading(mg.month)}`);
+      lines.push("");
+      for (const wg of mg.weeks) {
+        lines.push(`### ${formatWeekTitle(wg, year)}`);
+        lines.push("");
+        for (const day of wg.days) {
+          if (today.year() === year && day.isAfter(today, "day")) {
+            break;
+          }
           lines.push(`#### ${formatDayTitle(day, this.settings)}`);
           lines.push("");
         }
@@ -496,6 +526,13 @@ var FileManager = class {
       setTimeout(() => this.scrollToLineWithRetry(leaf, lineNo, attempt + 1), 150);
     }
   }
+  /** 跳转到指定年份文件的指定行 */
+  async jumpToLine(year, lineNo) {
+    const file = await this.getOrCreateFile(year);
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, lineNo, 0);
+  }
   // ─────────────────────────────────────────────────────
   // 结构修复
   // ─────────────────────────────────────────────────────
@@ -548,6 +585,165 @@ var FileManager = class {
     this.invalidateCache(year);
     new import_obsidian3.Notice(`\u7ED3\u6784\u4FEE\u590D\u5B8C\u6210\uFF0C\u8865\u5168\u4E86 ${repaired} \u5904\u7F3A\u5931\u6807\u9898`);
   }
+  /**
+   * 迁移日期格式：把文件中旧格式的日期标题替换为当前设置的日期格式
+   */
+  async migrateDateFormat(year) {
+    const file = await this.getOrCreateFile(year);
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    let changed = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.startsWith("#### "))
+        continue;
+      const m = parseDayTitle(line, this.settings.dateFormat);
+      if (!m)
+        continue;
+      const newTitle = `#### ${formatDayTitle(m, this.settings)}`;
+      const weekdayPattern = /^(####\s+).+?\s+(星期[一二三四五六日]|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/;
+      const newLine = line.replace(weekdayPattern, newTitle);
+      if (newLine !== line) {
+        lines[i] = newLine;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      await this.app.vault.modify(file, lines.join("\n"));
+      this.invalidateCache(year);
+      new import_obsidian3.Notice(`${year} \u5E74\u5171\u8FC1\u79FB ${changed} \u6761\u65E5\u671F\u6807\u9898\u4E3A ${this.settings.dateFormat} \u683C\u5F0F`);
+    } else {
+      new import_obsidian3.Notice(`${year} \u5E74\u65E0\u9700\u8FC1\u79FB\uFF0C\u6240\u6709\u65E5\u671F\u6807\u9898\u5DF2\u662F ${this.settings.dateFormat} \u683C\u5F0F`);
+    }
+  }
+  /**
+   * 确保文件包含从年初到今天的日期结构（up_to_today 模式）
+   * 文件不存在则创建，存在则补充缺失的日期标题
+   */
+  async ensureUpToToday(year) {
+    const file = await this.getOrCreateFile(year);
+    const today = (0, import_obsidian3.moment)();
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const existingDays = /* @__PURE__ */ new Set();
+    for (const line of lines) {
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        if (m)
+          existingDays.add(m.format("YYYY-MM-DD"));
+      }
+    }
+    const groups = buildYearStructure(year, this.settings);
+    let repaired = 0;
+    for (const mg of groups) {
+      for (const wg of mg.weeks) {
+        for (const day of wg.days) {
+          const dateKey = day.format("YYYY-MM-DD");
+          if (year === today.year() && day.isAfter(today, "day"))
+            break;
+          if (existingDays.has(dateKey))
+            continue;
+          await this.insertMissingDateBlock(file, day);
+          repaired++;
+          await this.getDateLineMap(file);
+          const cm = await this.buildCache(file);
+          await this.sleep(50);
+        }
+      }
+    }
+    this.invalidateCache(year);
+    if (repaired > 0) {
+      new import_obsidian3.Notice(`${year} \u5E74\u5DF2\u8865\u5145 ${repaired} \u5929\u65E5\u671F\u7ED3\u6784`);
+    }
+  }
+  sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+  /**
+   * 切换为每天新增模式时，删除今天之后的所有日期和周标题
+   */
+  async trimAfterToday(year) {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file)
+      return;
+    const today = (0, import_obsidian3.moment)();
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const todayFormatted = today.format(this.settings.dateFormat);
+    let todayLineIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("#### ")) {
+        const weekdays = [
+          "\u661F\u671F\u4E00",
+          "\u661F\u671F\u4E8C",
+          "\u661F\u671F\u4E09",
+          "\u661F\u671F\u56DB",
+          "\u661F\u671F\u4E94",
+          "\u661F\u671F\u516D",
+          "\u661F\u671F\u65E5",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday"
+        ];
+        if (weekdays.some((w) => line.includes(w)) && line.includes(todayFormatted)) {
+          todayLineIdx = i;
+          break;
+        }
+      }
+    }
+    if (todayLineIdx === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith("#### ")) {
+          const m = parseDayTitle(line, this.settings.dateFormat);
+          if (m && m.isValid()) {
+            if (m.isSameOrAfter(today, "day")) {
+              todayLineIdx = i;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (todayLineIdx === -1)
+      return;
+    let todayBlockEnd = todayLineIdx + 1;
+    for (let i = todayLineIdx + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("#### ") || lines[i].startsWith("## ")) {
+        todayBlockEnd = i;
+        break;
+      }
+      todayBlockEnd = i + 1;
+    }
+    let keepTo = todayBlockEnd;
+    while (keepTo > 0 && lines[keepTo - 1].trim() === "")
+      keepTo--;
+    while (keepTo > 0) {
+      const lastLine = lines[keepTo - 1].trim();
+      if (lastLine === "") {
+        keepTo--;
+        continue;
+      }
+      if (lastLine.startsWith("### ")) {
+        keepTo--;
+        while (keepTo > 0 && lines[keepTo - 1].trim() === "")
+          keepTo--;
+        continue;
+      }
+      break;
+    }
+    const newLines = lines.slice(0, keepTo);
+    if (newLines[newLines.length - 1] !== "")
+      newLines.push("");
+    await this.app.vault.modify(file, newLines.join("\n"));
+    this.invalidateCache(year);
+  }
   // ─────────────────────────────────────────────────────
   // 快速插入条目
   // ─────────────────────────────────────────────────────
@@ -569,13 +765,28 @@ var FileManager = class {
     }
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
-    const entry = `- ${label}`;
+    const isTodo = label.includes("\u5F85\u529E");
+    const entry = isTodo ? `- [ ] ${label.replace("\u2610 ", "")}` : `- ${label}`;
     let insertIdx = headingLine + 1;
     for (let i = headingLine + 1; i < lines.length; i++) {
       if (lines[i].startsWith("## ") || lines[i].startsWith("### ") || lines[i].startsWith("#### ")) {
         break;
       }
-      if (lines[i].trim() !== "") {
+      const trimmed = lines[i].trim();
+      if (trimmed === `- ${label}` || trimmed === `- [ ] ${label.replace("\u2610 ", "")}`) {
+        const leaf2 = this.app.workspace.getLeaf(false);
+        await leaf2.openFile(file);
+        this.scrollToLineWithRetry(leaf2, i, 0);
+        setTimeout(() => {
+          const view = leaf2.view;
+          if (view == null ? void 0 : view.editor) {
+            view.editor.setCursor({ line: i, ch: lines[i].length });
+            view.editor.focus();
+          }
+        }, 300);
+        return;
+      }
+      if (trimmed !== "") {
         insertIdx = i + 1;
       } else {
         insertIdx = i;
@@ -704,6 +915,89 @@ var FileManager = class {
       }
     }
     return previewLines.join("\n");
+  }
+  /**
+   * 获取指定日期的未完成待办列表（- [ ] 开头的条目）
+   */
+  async getIncompleteTodosForDate(date) {
+    const year = date.year();
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file)
+      return [];
+    const lineMap = await this.getDateLineMap(file);
+    const dateKey = date.format("YYYY-MM-DD");
+    const headingLine = lineMap.get(dateKey);
+    if (headingLine === void 0)
+      return [];
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const todos = [];
+    for (let i = headingLine + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("## ") || line.startsWith("### ") || line.startsWith("#### "))
+        break;
+      if (line.trim().startsWith("- [ ]")) {
+        todos.push(line.trim().replace(/^- \[ \]\s*/, ""));
+      }
+    }
+    return todos;
+  }
+  /**
+   * 获取指定月份所有日期的未完成待办数（用于日历标记）
+   */
+  async getIncompleteTodoMap(year, month) {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file)
+      return /* @__PURE__ */ new Map();
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const result = /* @__PURE__ */ new Map();
+    let currentDateKey = null;
+    for (const line of lines) {
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+      } else if (currentDateKey && line.trim().startsWith("- [ ]")) {
+        const d = currentDateKey;
+        result.set(d, (result.get(d) || 0) + 1);
+      } else if (line.startsWith("## ") || line.startsWith("### ")) {
+        currentDateKey = null;
+      }
+    }
+    return result;
+  }
+  /**
+   * 获取当前文件中所有未完成待办（附带日期）
+   */
+  async getAllIncompleteTodos(year) {
+    const filePath = this.getFilePath(year);
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file)
+      return [];
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    const result = [];
+    let currentDateKey = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("#### ")) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("MM-DD") : null;
+      } else if (currentDateKey && line.trim().startsWith("- [ ]")) {
+        const todoText = line.trim().replace(/^- \[ \]\s*/, "");
+        const last = result[result.length - 1];
+        if (last && last.date === currentDateKey) {
+          last.todos.push({ text: todoText, line: i });
+        } else {
+          result.push({ date: currentDateKey, todos: [{ text: todoText, line: i }] });
+        }
+      } else if (line.startsWith("## ") || line.startsWith("### ")) {
+        currentDateKey = null;
+      }
+    }
+    return result;
   }
   // ─────────────────────────────────────────────────────
   // 导出
@@ -848,6 +1142,8 @@ var CalendarView = class extends import_obsidian4.ItemView {
     // 1-12
     this.selectedDate = null;
     this.tooltip = null;
+    this.actionBtnEl = null;
+    this.actionPopupEl = null;
     this.plugin = plugin;
     const now = (0, import_obsidian4.moment)();
     this.currentYear = now.year();
@@ -884,9 +1180,15 @@ var CalendarView = class extends import_obsidian4.ItemView {
       this.currentYear,
       this.currentMonth
     );
+    const incompleteTodoMap = await this.plugin.fileManager.getIncompleteTodoMap(
+      this.currentYear,
+      this.currentMonth
+    );
     this.renderHeader(container);
-    this.renderCalendarGrid(container, datesWithContent);
+    this.renderCalendarGrid(container, datesWithContent, incompleteTodoMap);
     this.renderActionButton(container);
+    const allTodos = await this.plugin.fileManager.getAllIncompleteTodos(this.currentYear);
+    this.renderTodoList(container, allTodos);
   }
   // ─────────────────────────────────────────────────────
   // Header
@@ -966,7 +1268,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
   // ─────────────────────────────────────────────────────
   // Calendar grid
   // ─────────────────────────────────────────────────────
-  renderCalendarGrid(container, datesWithContent) {
+  renderCalendarGrid(container, datesWithContent, incompleteTodoMap) {
     const grid = container.createDiv("wl-cal-grid");
     const weekStartDay = this.plugin.settings.weekStart;
     const headers = weekStartDay === "monday" ? ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"] : ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
@@ -1015,6 +1317,14 @@ var CalendarView = class extends import_obsidian4.ItemView {
         cell.addClass("wl-has-content");
         cell.createDiv("wl-dot");
       }
+      const dateKey = cur.format("YYYY-MM-DD");
+      const todoCount = incompleteTodoMap.get(dateKey) || 0;
+      if (todoCount > 0) {
+        cell.addClass("wl-has-todo");
+        const dot = cell.createDiv("wl-todo-dot");
+        if (todoCount > 1)
+          dot.setText(String(todoCount));
+      }
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
         this.selectedDate = dateCopy.clone();
@@ -1023,9 +1333,13 @@ var CalendarView = class extends import_obsidian4.ItemView {
       });
       if (!this.app.isMobile) {
         cell.addEventListener("mouseenter", async (e) => {
+          cell.addClass("wl-hover");
+          this.updateButtonTextForDate(dateCopy);
           await this.showTooltip(e, dateCopy);
         });
         cell.addEventListener("mouseleave", () => {
+          cell.removeClass("wl-hover");
+          this.updateButtonTextForDate(null);
           this.removeTooltip();
         });
       }
@@ -1045,34 +1359,36 @@ var CalendarView = class extends import_obsidian4.ItemView {
   renderActionButton(container) {
     const actionBar = container.createDiv("wl-action-bar");
     const today = (0, import_obsidian4.moment)();
-    let targetDate;
+    const sel = this.selectedDate;
     let label;
-    if (this.selectedDate && isSameDay(this.selectedDate, today)) {
-      targetDate = today.clone();
+    if (sel && isSameDay(sel, today)) {
       label = "\uFF0B \u6DFB\u52A0\u4ECA\u65E5\u5DE5\u4F5C\u8BB0\u5F55";
-    } else if (this.selectedDate) {
-      targetDate = this.selectedDate.clone();
-      label = `\uFF0B \u6DFB\u52A0 ${targetDate.format("MM-DD")} \u5DE5\u4F5C\u8BB0\u5F55`;
+    } else if (sel) {
+      label = `\uFF0B \u6DFB\u52A0 ${sel.format("MM-DD")} \u5DE5\u4F5C\u8BB0\u5F55`;
     } else {
-      targetDate = today.clone();
       label = "\uFF0B \u6DFB\u52A0\u4ECA\u65E5\u5DE5\u4F5C\u8BB0\u5F55";
     }
     const btn = actionBar.createEl("button", { cls: "wl-add-btn" });
     btn.textContent = label;
+    this.actionBtnEl = btn;
     const popup = actionBar.createDiv("wl-session-popup");
     popup.style.display = "none";
+    this.actionPopupEl = popup;
+    const getTarget = () => {
+      return this.selectedDate ? this.selectedDate.clone() : (0, import_obsidian4.moment)();
+    };
     const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
     amBtn.textContent = "\u2600 \u4E0A\u5348";
     amBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(targetDate, "\u4E0A\u5348");
+      await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0A\u5348");
       await this.render();
     });
     const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
     pmBtn.textContent = "\u{1F319} \u4E0B\u5348";
     pmBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(targetDate, "\u4E0B\u5348");
+      await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0B\u5348");
       await this.render();
     });
     btn.addEventListener("click", (e) => {
@@ -1085,24 +1401,92 @@ var CalendarView = class extends import_obsidian4.ItemView {
         popup.style.display = "none";
       }
     });
+    const todoBtn = actionBar.createEl("button", { cls: "wl-todo-btn" });
+    todoBtn.textContent = "\u2610 \u6DFB\u52A0\u5F85\u529E";
+    todoBtn.addEventListener("click", async () => {
+      var _a;
+      const editor = (_a = this.app.workspace.activeEditor) == null ? void 0 : _a.editor;
+      if (editor) {
+        const cursor = editor.getCursor();
+        if (cursor.ch === 0) {
+          editor.replaceRange("- [ ] ", cursor);
+          editor.setCursor({ line: cursor.line, ch: 6 });
+        } else {
+          editor.replaceRange("\n- [ ] ", cursor);
+          editor.setCursor({ line: cursor.line + 1, ch: 6 });
+        }
+        editor.focus();
+      } else {
+        const target = this.selectedDate ? this.selectedDate.clone() : (0, import_obsidian4.moment)();
+        await this.plugin.fileManager.insertSessionLabel(target, "\u2610 \u5F85\u529E");
+        await this.render();
+      }
+    });
   }
   // ─────────────────────────────────────────────────────
   // Tooltip (desktop only)
   // ─────────────────────────────────────────────────────
+  // ────────────────────────────────────────────
+  // Hover preview helpers
+  // ────────────────────────────────────────────
+  // ────────────────────────────────────────────
+  // 待办列表（日历下方）
+  // ────────────────────────────────────────────
+  renderTodoList(container, allTodos) {
+    if (allTodos.length === 0)
+      return;
+    const section = container.createDiv("wl-todo-section");
+    section.createDiv({ cls: "wl-todo-label", text: "\u5F85\u529E\u4E8B\u9879" });
+    for (const group of allTodos) {
+      for (const todo of group.todos) {
+        const item = section.createDiv("wl-todo-item");
+        item.createSpan({ cls: "wl-todo-date", text: group.date });
+        const textEl = item.createSpan({ cls: "wl-todo-text", text: "\u2610 " + todo.text });
+        item.addClass("wl-clickable");
+        item.addEventListener("click", async () => {
+          await this.plugin.fileManager.jumpToLine(this.currentYear, todo.line);
+        });
+      }
+    }
+  }
+  updateButtonTextForDate(previewDate) {
+    if (!this.actionBtnEl)
+      return;
+    const today = (0, import_obsidian4.moment)();
+    const target = previewDate ? previewDate : this.selectedDate ? this.selectedDate : today;
+    let label;
+    if (isSameDay(target, today)) {
+      label = "\uFF0B \u6DFB\u52A0\u4ECA\u65E5\u5DE5\u4F5C\u8BB0\u5F55";
+    } else {
+      label = `\uFF0B \u6DFB\u52A0 ${target.format("MM-DD")} \u5DE5\u4F5C\u8BB0\u5F55`;
+    }
+    this.actionBtnEl.textContent = label;
+  }
   async showTooltip(e, date) {
     this.removeTooltip();
-    const preview = await this.plugin.fileManager.getDayPreview(date, 5);
-    if (!preview)
+    const [preview, todos] = await Promise.all([
+      this.plugin.fileManager.getDayPreview(date, 4),
+      this.plugin.fileManager.getIncompleteTodosForDate(date)
+    ]);
+    if (!preview && todos.length === 0)
       return;
     const tt = document.createElement("div");
     tt.className = "wl-tooltip";
     tt.style.left = `${e.pageX + 12}px`;
     tt.style.top = `${e.pageY + 4}px`;
     tt.createDiv({ cls: "wl-tt-title", text: date.format("YYYY-MM-DD") });
-    const body = tt.createDiv({ cls: "wl-tt-body" });
-    preview.split("\n").forEach((line) => {
-      body.createDiv({ cls: "wl-tt-line", text: line });
-    });
+    if (todos.length > 0) {
+      const todoSection = tt.createDiv("wl-tt-todos");
+      for (const todo of todos) {
+        todoSection.createDiv({ cls: "wl-tt-todo-line", text: "\u2610 " + todo });
+      }
+    }
+    if (preview) {
+      const body = tt.createDiv({ cls: "wl-tt-body" });
+      preview.split("\n").forEach((line) => {
+        body.createDiv({ cls: "wl-tt-line", text: line });
+      });
+    }
     document.body.appendChild(tt);
     this.tooltip = tt;
   }
@@ -1118,6 +1502,16 @@ var CalendarView = class extends import_obsidian4.ItemView {
   async navigateTo(year, month) {
     this.currentYear = year;
     this.currentMonth = month;
+    await this.refresh();
+  }
+  /**
+   * 从编辑器光标同步：选中指定日期（导航到对应年月 + 标记选中）
+   * 不打开文件，因为光标已经在文件里了
+   */
+  async selectDate(date) {
+    this.selectedDate = date.clone();
+    this.currentYear = date.year();
+    this.currentMonth = date.month() + 1;
     await this.refresh();
   }
 };
@@ -1282,6 +1676,13 @@ var SearchView = class extends import_obsidian5.ItemView {
 
 // src/main.ts
 var WorkLogPlugin = class extends import_obsidian6.Plugin {
+  constructor() {
+    super(...arguments);
+    this.lastSyncedDateKey = null;
+    // 避免重复同步
+    this.prevGenerationMode = null;
+  }
+  // 用于检测模式切换
   async onload() {
     await this.loadSettings();
     this.fileManager = new FileManager(this.app, this.settings);
@@ -1408,40 +1809,99 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
       })
     );
     this.app.workspace.onLayoutReady(async () => {
-      if (this.settings.autoGenerateYearStructure) {
-        const year = (0, import_obsidian6.moment)().year();
-        const filePath = this.fileManager.getFilePath(year);
-        const existing = this.app.vault.getAbstractFileByPath(filePath);
+      const year = (0, import_obsidian6.moment)().year();
+      const filePath = this.fileManager.getFilePath(year);
+      const existing = this.app.vault.getAbstractFileByPath(filePath);
+      if (this.settings.generationMode === "full_year") {
         if (!existing) {
           try {
             await this.fileManager.getOrCreateFile(year);
           } catch (e) {
           }
         }
+      } else {
+        try {
+          await this.fileManager.ensureUpToToday(year);
+        } catch (e) {
+        }
       }
       if (!this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE).length) {
         await this.activateCalendarView(false);
       }
     });
+    this.registerInterval(
+      window.setInterval(() => this.syncCursorDateToCalendar(), 300)
+    );
   }
   onunload() {
     this.app.workspace.detachLeavesOfType(CALENDAR_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(SEARCH_VIEW_TYPE);
   }
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    if (data.autoGenerateYearStructure !== void 0) {
+      data.generationMode = data.autoGenerateYearStructure ? "full_year" : "up_to_today";
+      delete data.autoGenerateYearStructure;
+      await this.saveData(data);
+    }
+    this.settings = data;
+    this.prevGenerationMode = this.settings.generationMode;
   }
   async saveSettings() {
+    const modeChanged = this.prevGenerationMode !== null && this.settings.generationMode !== this.prevGenerationMode;
     await this.saveData(this.settings);
     if (this.fileManager) {
       this.fileManager.updateSettings(this.settings);
     }
+    if (modeChanged) {
+      const year = (0, import_obsidian6.moment)().year();
+      if (this.settings.generationMode === "full_year") {
+        await this.fileManager.repairYearStructure(year);
+        new import_obsidian6.Notice("\u5DF2\u5207\u6362\u4E3A\u300C\u6BCF\u5E74\u81EA\u52A8\u751F\u6210\u5168\u5E74\u300D\uFF0C\u6587\u4EF6\u5DF2\u8865\u5168\u5230\u5E74\u5E95");
+      } else {
+        await this.fileManager.trimAfterToday(year);
+        new import_obsidian6.Notice("\u5DF2\u5207\u6362\u4E3A\u300C\u6BCF\u5929\u65B0\u589E\u5230\u5F53\u524D\u65E5\u300D\uFF0C\u6587\u4EF6\u5DF2\u88C1\u526A\u5230\u5F53\u524D\u65E5");
+      }
+    }
+    this.prevGenerationMode = this.settings.generationMode;
     this.refreshCalendarViews();
   }
   refreshCalendarViews() {
     for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
       const view = leaf.view;
       view.refresh();
+    }
+  }
+  // ─────────────────────────────────────────────────────
+  // 编辑器光标同步到日历
+  // ─────────────────────────────────────────────────────
+  syncCursorDateToCalendar() {
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
+    if (!view)
+      return;
+    const editor = view.editor;
+    if (!editor)
+      return;
+    const cursor = editor.getCursor();
+    const line = editor.getLine(cursor.line);
+    if (!line)
+      return;
+    if (!line.startsWith("#### ")) {
+      this.lastSyncedDateKey = null;
+      return;
+    }
+    const m = parseDayTitle(line, this.settings.dateFormat);
+    if (!m || !m.isValid()) {
+      this.lastSyncedDateKey = null;
+      return;
+    }
+    const dateKey = m.format("YYYY-MM-DD");
+    if (dateKey === this.lastSyncedDateKey)
+      return;
+    this.lastSyncedDateKey = dateKey;
+    for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
+      const calView = leaf.view;
+      calView.selectDate(m);
     }
   }
   // ─────────────────────────────────────────────────────
@@ -1462,14 +1922,7 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
         this.app.workspace.revealLeaf(existing[0]);
       return;
     }
-    let leaf;
-    if (this.settings.calendarPosition === "right") {
-      leaf = this.app.workspace.getRightLeaf(false);
-    } else if (this.settings.calendarPosition === "left") {
-      leaf = this.app.workspace.getLeftLeaf(false);
-    } else {
-      leaf = this.app.workspace.getLeaf("tab");
-    }
+    const leaf = this.app.workspace.getRightLeaf(false);
     if (leaf) {
       await leaf.setViewState({ type: CALENDAR_VIEW_TYPE, active: true });
       if (reveal)
