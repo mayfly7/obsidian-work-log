@@ -20,6 +20,8 @@ export interface WorkLogSettings {
   entryMode: "ampm" | "timestamp";
   /** 是否在日历上标记有内容的日期 */
   showContentDots: boolean;
+  /** 是否在日历上标注节假日 */
+  showHolidays: boolean;
   /** 文件头部模板 */
   fileHeaderTemplate: string;
 }
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: WorkLogSettings = {
   timestampFormat: "HH:mm",
   entryMode: "ampm",
   showContentDots: true,
+  showHolidays: true,
   fileHeaderTemplate: "# {{year}}年工作日志",
 };
 
@@ -208,6 +211,18 @@ export class WorkLogSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.showContentDots)
           .onChange(async (value) => {
             this.plugin.settings.showContentDots = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("标注节假日")
+      .setDesc("在日历上显示中国法定节假日名称（元旦、春节、清明、劳动节、端午、中秋、国庆）")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showHolidays)
+          .onChange(async (value) => {
+            this.plugin.settings.showHolidays = value;
             await this.plugin.saveSettings();
           })
       );

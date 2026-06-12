@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, moment } from "obsidian";
 import type WorkLogPlugin from "./main";
 import { isSameDay } from "./dateUtils";
+import { getHolidayName } from "./holidays";
 
 export const CALENDAR_VIEW_TYPE = "work-log-calendar";
 
@@ -222,6 +223,15 @@ export class CalendarView extends ItemView {
         cell.addClass("wl-has-todo");
         const dot = cell.createDiv("wl-todo-dot");
         if (todoCount > 1) dot.setText(String(todoCount));
+      }
+
+      // Holiday label
+      if (this.plugin.settings.showHolidays) {
+        const holidayName = getHolidayName(dateKey);
+        if (holidayName) {
+          cell.addClass("wl-holiday");
+          cell.createDiv({ cls: "wl-holiday-label", text: holidayName });
+        }
       }
 
       const dateCopy = cur.clone();

@@ -200,6 +200,31 @@
   background: #fca5a5;
 }
 
+/* 节假日标注 */
+.wl-holiday-label {
+  font-size: 7px;
+  line-height: 1;
+  color: #ef4444;
+  white-space: nowrap;
+  margin-top: 1px;
+  font-weight: 600;
+  text-align: center;
+  z-index: 1;
+}
+
+.wl-holiday .wl-day-num {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.wl-holiday.wl-today .wl-day-num {
+  color: var(--text-on-accent) !important;
+}
+
+.wl-holiday.wl-today .wl-holiday-label {
+  color: #fca5a5;
+}
+
 /* ─── 统计区域 ─────────────────────────────────────── */
 .wl-stats {
   display: flex;

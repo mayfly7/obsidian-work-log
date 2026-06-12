@@ -41,6 +41,7 @@ var DEFAULT_SETTINGS = {
   timestampFormat: "HH:mm",
   entryMode: "ampm",
   showContentDots: true,
+  showHolidays: true,
   fileHeaderTemplate: "# {{year}}\u5E74\u5DE5\u4F5C\u65E5\u5FD7"
 };
 var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -119,6 +120,12 @@ var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("\u6807\u8BB0\u6709\u5185\u5BB9\u7684\u65E5\u671F").setDesc("\u5728\u65E5\u5386\u4E0A\u7528\u5706\u70B9\u6807\u8BB0\u6709\u5DE5\u4F5C\u5185\u5BB9\u7684\u65E5\u671F").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showContentDots).onChange(async (value) => {
         this.plugin.settings.showContentDots = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("\u6807\u6CE8\u8282\u5047\u65E5").setDesc("\u5728\u65E5\u5386\u4E0A\u663E\u793A\u4E2D\u56FD\u6CD5\u5B9A\u8282\u5047\u65E5\u540D\u79F0\uFF08\u5143\u65E6\u3001\u6625\u8282\u3001\u6E05\u660E\u3001\u52B3\u52A8\u8282\u3001\u7AEF\u5348\u3001\u4E2D\u79CB\u3001\u56FD\u5E86\uFF09").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showHolidays).onChange(async (value) => {
+        this.plugin.settings.showHolidays = value;
         await this.plugin.saveSettings();
       })
     );
@@ -1142,6 +1149,47 @@ var FileManager = class {
 
 // src/calendarView.ts
 var import_obsidian4 = require("obsidian");
+
+// src/holidays.ts
+var HOLIDAY_RAW = {
+  // ── 2026 年 ──────────────────────────────────────
+  "2026-01-01": "\u5143\u65E6",
+  "2026-01-02": "\u5143\u65E6",
+  "2026-01-03": "\u5143\u65E6",
+  "2026-02-15": "\u6625\u8282",
+  "2026-02-16": "\u6625\u8282",
+  "2026-02-17": "\u6625\u8282",
+  "2026-02-18": "\u6625\u8282",
+  "2026-02-19": "\u6625\u8282",
+  "2026-02-20": "\u6625\u8282",
+  "2026-02-21": "\u6625\u8282",
+  "2026-04-05": "\u6E05\u660E",
+  "2026-04-06": "\u6E05\u660E",
+  "2026-04-07": "\u6E05\u660E",
+  "2026-05-01": "\u52B3\u52A8\u8282",
+  "2026-05-02": "\u52B3\u52A8\u8282",
+  "2026-05-03": "\u52B3\u52A8\u8282",
+  "2026-05-04": "\u52B3\u52A8\u8282",
+  "2026-05-05": "\u52B3\u52A8\u8282",
+  "2026-06-19": "\u7AEF\u5348",
+  "2026-06-20": "\u7AEF\u5348",
+  "2026-06-21": "\u7AEF\u5348",
+  "2026-09-25": "\u4E2D\u79CB",
+  "2026-09-26": "\u4E2D\u79CB",
+  "2026-09-27": "\u4E2D\u79CB",
+  "2026-10-01": "\u56FD\u5E86",
+  "2026-10-02": "\u56FD\u5E86",
+  "2026-10-03": "\u56FD\u5E86",
+  "2026-10-04": "\u56FD\u5E86",
+  "2026-10-05": "\u56FD\u5E86",
+  "2026-10-06": "\u56FD\u5E86",
+  "2026-10-07": "\u56FD\u5E86"
+};
+function getHolidayName(dateKey) {
+  return HOLIDAY_RAW[dateKey] || "";
+}
+
+// src/calendarView.ts
 var CALENDAR_VIEW_TYPE = "work-log-calendar";
 var CalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
@@ -1334,6 +1382,13 @@ var CalendarView = class extends import_obsidian4.ItemView {
         const dot = cell.createDiv("wl-todo-dot");
         if (todoCount > 1)
           dot.setText(String(todoCount));
+      }
+      if (this.plugin.settings.showHolidays) {
+        const holidayName = getHolidayName(dateKey);
+        if (holidayName) {
+          cell.addClass("wl-holiday");
+          cell.createDiv({ cls: "wl-holiday-label", text: holidayName });
+        }
       }
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
