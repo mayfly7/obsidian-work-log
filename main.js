@@ -1043,25 +1043,47 @@ var FileManager = class {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
     const isTodo = label.includes("\u5F85\u529E");
-    const entry = isTodo ? `- [ ] ${label.replace("\u2610 ", "")}` : `- ${label}`;
+    const isSession = !isTodo;
+    const entry = isTodo ? `- [ ] ${label.replace("\u2610 ", "")}` : `----------------------------${label}-------------------------------`;
     let insertIdx = headingLine + 1;
+    let found = false;
     for (let i = headingLine + 1; i < lines.length; i++) {
       if (lines[i].startsWith("## ") || lines[i].startsWith("### ") || lines[i].startsWith("#### ")) {
         break;
       }
       const trimmed = lines[i].trim();
-      if (trimmed === `- ${label}` || trimmed === `- [ ] ${label.replace("\u2610 ", "")}`) {
-        const leaf2 = this.app.workspace.getLeaf(false);
-        await leaf2.openFile(file);
-        this.scrollToLineWithRetry(leaf2, i, 0);
-        setTimeout(() => {
-          const view = leaf2.view;
-          if (view == null ? void 0 : view.editor) {
-            view.editor.setCursor({ line: i, ch: lines[i].length });
-            view.editor.focus();
+      const dupMatch = isTodo ? trimmed === `- [ ] ${label.replace("\u2610 ", "")}` || trimmed === `- ${label}` : trimmed === `- ${label}` || trimmed === entry;
+      if (dupMatch) {
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        if (isSession) {
+          let cursorLine = i + 1;
+          while (cursorLine < lines.length && lines[cursorLine].trim() === "" && !lines[cursorLine].startsWith("#### ") && !lines[cursorLine].startsWith("### ") && !lines[cursorLine].startsWith("## ")) {
+            cursorLine++;
           }
-        }, 300);
-        return;
+          if (cursorLine >= lines.length || lines[cursorLine].startsWith("#### ") || lines[cursorLine].startsWith("### ") || lines[cursorLine].startsWith("## ")) {
+            cursorLine = i + 1;
+          }
+          this.scrollToLineWithRetry(leaf, cursorLine, 0);
+          setTimeout(() => {
+            const view = leaf.view;
+            if (view == null ? void 0 : view.editor) {
+              view.editor.setCursor({ line: cursorLine, ch: 0 });
+              view.editor.focus();
+            }
+          }, 300);
+        } else {
+          this.scrollToLineWithRetry(leaf, i, 0);
+          setTimeout(() => {
+            const view = leaf.view;
+            if (view == null ? void 0 : view.editor) {
+              view.editor.setCursor({ line: i, ch: lines[i].length });
+              view.editor.focus();
+            }
+          }, 300);
+        }
+        found = true;
+        break;
       }
       if (trimmed !== "") {
         insertIdx = i + 1;
@@ -1069,18 +1091,36 @@ var FileManager = class {
         insertIdx = i;
       }
     }
-    lines.splice(insertIdx, 0, entry);
-    await this.app.vault.modify(file, lines.join("\n"));
-    const leaf = this.app.workspace.getLeaf(false);
-    await leaf.openFile(file);
-    this.scrollToLineWithRetry(leaf, insertIdx, 0);
-    setTimeout(() => {
-      const view = leaf.view;
-      if (view == null ? void 0 : view.editor) {
-        view.editor.setCursor({ line: insertIdx, ch: entry.length });
-        view.editor.focus();
+    if (!found) {
+      if (isSession) {
+        lines.splice(insertIdx, 0, entry, "");
+        await this.app.vault.modify(file, lines.join("\n"));
+        const cursorLine = insertIdx + 2;
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        this.scrollToLineWithRetry(leaf, cursorLine, 0);
+        setTimeout(() => {
+          const view = leaf.view;
+          if (view == null ? void 0 : view.editor) {
+            view.editor.setCursor({ line: cursorLine, ch: 0 });
+            view.editor.focus();
+          }
+        }, 300);
+      } else {
+        lines.splice(insertIdx, 0, entry);
+        await this.app.vault.modify(file, lines.join("\n"));
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        this.scrollToLineWithRetry(leaf, insertIdx, 0);
+        setTimeout(() => {
+          const view = leaf.view;
+          if (view == null ? void 0 : view.editor) {
+            view.editor.setCursor({ line: insertIdx, ch: entry.length });
+            view.editor.focus();
+          }
+        }, 300);
       }
-    }, 300);
+    }
     this.invalidateCache(date.year());
   }
   /**

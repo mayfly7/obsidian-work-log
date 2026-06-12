@@ -891,28 +891,67 @@ export class FileManager {
     const lines = content.split("\n");
 
     const isTodo = label.includes("待办");
-    const entry = isTodo ? `- [ ] ${label.replace("☐ ", "")}` : `- ${label}`;
+    const isSession = !isTodo; // 上午 / 下午
+
+    // 上午/下午使用分隔线样式，待办使用 checkbox 格式
+    const entry = isTodo ? `- [ ] ${label.replace("☐ ", "")}` : `----------------------------${label}-------------------------------`;
 
     // 扫描该日期区块，检查是否已存在相同标签
     let insertIdx = headingLine + 1;
+    let found = false;
     for (let i = headingLine + 1; i < lines.length; i++) {
       if (lines[i].startsWith("## ") || lines[i].startsWith("### ") || lines[i].startsWith("#### ")) {
         break;
       }
       const trimmed = lines[i].trim();
-      if (trimmed === `- ${label}` || trimmed === `- [ ] ${label.replace("☐ ", "")}`) {
-        // 已有此标签：定位光标到该行末尾
+      // 匹配：旧格式 `- 上午` / 新格式 `----上午----` / 待办 `- [ ] 待办`
+      const dupMatch = isTodo
+        ? (trimmed === `- [ ] ${label.replace("☐ ", "")}` || trimmed === `- ${label}`)
+        : (trimmed === `- ${label}` || trimmed === entry);
+
+      if (dupMatch) {
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(file);
-        this.scrollToLineWithRetry(leaf, i, 0);
-        setTimeout(() => {
-          const view = leaf.view as any;
-          if (view?.editor) {
-            view.editor.setCursor({ line: i, ch: lines[i].length });
-            view.editor.focus();
+
+        if (isSession) {
+          // 上午/下午：光标放到分隔线的下一行（即该行之后）
+          let cursorLine = i + 1;
+          // 跳过空白行，停在第一个非空白行或下一个标题
+          while (cursorLine < lines.length &&
+                 lines[cursorLine].trim() === "" &&
+                 !lines[cursorLine].startsWith("#### ") &&
+                 !lines[cursorLine].startsWith("### ") &&
+                 !lines[cursorLine].startsWith("## ")) {
+            cursorLine++;
           }
-        }, 300);
-        return;
+          // 如果下一个是标题或文件末尾，停在空白行
+          if (cursorLine >= lines.length ||
+              lines[cursorLine].startsWith("#### ") ||
+              lines[cursorLine].startsWith("### ") ||
+              lines[cursorLine].startsWith("## ")) {
+            cursorLine = i + 1; // 停在分隔线的下一行
+          }
+          this.scrollToLineWithRetry(leaf, cursorLine, 0);
+          setTimeout(() => {
+            const view = leaf.view as any;
+            if (view?.editor) {
+              view.editor.setCursor({ line: cursorLine, ch: 0 });
+              view.editor.focus();
+            }
+          }, 300);
+        } else {
+          // 待办：光标放到行末
+          this.scrollToLineWithRetry(leaf, i, 0);
+          setTimeout(() => {
+            const view = leaf.view as any;
+            if (view?.editor) {
+              view.editor.setCursor({ line: i, ch: lines[i].length });
+              view.editor.focus();
+            }
+          }, 300);
+        }
+        found = true;
+        break;
       }
       if (trimmed !== "") {
         insertIdx = i + 1;
@@ -921,19 +960,38 @@ export class FileManager {
       }
     }
 
-    lines.splice(insertIdx, 0, entry);
-    await this.app.vault.modify(file, lines.join("\n"));
-
-    const leaf = this.app.workspace.getLeaf(false);
-    await leaf.openFile(file);
-    this.scrollToLineWithRetry(leaf, insertIdx, 0);
-    setTimeout(() => {
-      const view = leaf.view as any;
-      if (view?.editor) {
-        view.editor.setCursor({ line: insertIdx, ch: entry.length });
-        view.editor.focus();
+    if (!found) {
+      if (isSession) {
+        // 上午/下午：插入分隔线 + 空行
+        lines.splice(insertIdx, 0, entry, "");
+        await this.app.vault.modify(file, lines.join("\n"));
+        const cursorLine = insertIdx + 2; // 分隔线 + 空行 → 光标在空行上
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        this.scrollToLineWithRetry(leaf, cursorLine, 0);
+        setTimeout(() => {
+          const view = leaf.view as any;
+          if (view?.editor) {
+            view.editor.setCursor({ line: cursorLine, ch: 0 });
+            view.editor.focus();
+          }
+        }, 300);
+      } else {
+        // 待办：插入 checkbox
+        lines.splice(insertIdx, 0, entry);
+        await this.app.vault.modify(file, lines.join("\n"));
+        const leaf = this.app.workspace.getLeaf(false);
+        await leaf.openFile(file);
+        this.scrollToLineWithRetry(leaf, insertIdx, 0);
+        setTimeout(() => {
+          const view = leaf.view as any;
+          if (view?.editor) {
+            view.editor.setCursor({ line: insertIdx, ch: entry.length });
+            view.editor.focus();
+          }
+        }, 300);
       }
-    }, 300);
+    }
 
     this.invalidateCache(date.year());
   }
