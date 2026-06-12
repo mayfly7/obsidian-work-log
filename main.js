@@ -1911,14 +1911,22 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
     if (!editor)
       return;
     const cursor = editor.getCursor();
-    const line = editor.getLine(cursor.line);
-    if (!line)
-      return;
-    if (!line.startsWith("#### ")) {
-      this.lastSyncedDateKey = null;
-      return;
+    let dateLine = -1;
+    let m = null;
+    for (let i = cursor.line; i >= 0; i--) {
+      const line = editor.getLine(i);
+      if (!line)
+        continue;
+      if (line.startsWith("#### ")) {
+        m = parseDayTitle(line, this.settings.dateFormat);
+        if (m && m.isValid()) {
+          dateLine = i;
+          break;
+        }
+      }
+      if (line.startsWith("## ") || line.startsWith("### "))
+        break;
     }
-    const m = parseDayTitle(line, this.settings.dateFormat);
     if (!m || !m.isValid()) {
       this.lastSyncedDateKey = null;
       return;

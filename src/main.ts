@@ -271,24 +271,32 @@ export default class WorkLogPlugin extends Plugin {
     if (!editor) return;
 
     const cursor = editor.getCursor();
-    const line = editor.getLine(cursor.line);
-    if (!line) return;
 
-    // 只处理四级标题行（日期标题）
-    if (!line.startsWith("#### ")) {
-      this.lastSyncedDateKey = null;
-      return;
+    // 尝试从当前行解析日期，如果不是标题行则向上查找最近的日期标题
+    let dateLine = -1;
+    let m: moment.Moment | null = null;
+
+    for (let i = cursor.line; i >= 0; i--) {
+      const line = editor.getLine(i);
+      if (!line) continue;
+      if (line.startsWith("#### ")) {
+        m = parseDayTitle(line, this.settings.dateFormat);
+        if (m && m.isValid()) {
+          dateLine = i;
+          break;
+        }
+      }
+      // 遇到月标题或周标题，停止向上查找
+      if (line.startsWith("## ") || line.startsWith("### ")) break;
     }
 
-    // 用 parseDayTitle 解析，兼容多种日期格式
-    const m = parseDayTitle(line, this.settings.dateFormat);
     if (!m || !m.isValid()) {
       this.lastSyncedDateKey = null;
       return;
     }
 
     const dateKey = m.format("YYYY-MM-DD");
-    if (dateKey === this.lastSyncedDateKey) return; // 同一行，跳过
+    if (dateKey === this.lastSyncedDateKey) return;
 
     this.lastSyncedDateKey = dateKey;
 
