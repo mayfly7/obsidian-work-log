@@ -292,9 +292,11 @@ export default class WorkLogPlugin extends Plugin {
 
     this.lastSyncedDateKey = dateKey;
 
-    // 通知所有日历视图选中此日期
+    // 通知所有日历视图选中此日期（如果用户 3 秒内刚手动选了日期则跳过）
+    const now = Date.now();
     for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
       const calView = leaf.view as CalendarView;
+      if (now - calView.lastUserSelectTime < 3000) continue;
       calView.selectDate(m);
     }
   }

@@ -12,6 +12,8 @@ export class CalendarView extends ItemView {
   private tooltip: HTMLElement | null = null;
   private actionBtnEl: HTMLElement | null = null;
   private actionPopupEl: HTMLElement | null = null;
+  /** 用户最后一次手动选中日期的时间戳，用于防止光标同步立即覆盖 */
+  lastUserSelectTime: number = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: WorkLogPlugin) {
     super(leaf);
@@ -127,6 +129,7 @@ export class CalendarView extends ItemView {
       this.currentYear = n.year();
       this.currentMonth = n.month() + 1;
       this.selectedDate = n.clone();
+      this.lastUserSelectTime = Date.now();
       await this.refresh();
       await this.plugin.fileManager.openAndNavigateToDate(n);
     });
@@ -226,6 +229,7 @@ export class CalendarView extends ItemView {
       // Click: select date + open file
       cell.addEventListener("click", async () => {
         this.selectedDate = dateCopy.clone();
+        this.lastUserSelectTime = Date.now();
         await this.render();
         await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
       });

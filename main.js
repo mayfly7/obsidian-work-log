@@ -1151,6 +1151,8 @@ var CalendarView = class extends import_obsidian4.ItemView {
     this.tooltip = null;
     this.actionBtnEl = null;
     this.actionPopupEl = null;
+    /** 用户最后一次手动选中日期的时间戳，用于防止光标同步立即覆盖 */
+    this.lastUserSelectTime = 0;
     this.plugin = plugin;
     const now = (0, import_obsidian4.moment)();
     this.currentYear = now.year();
@@ -1253,6 +1255,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
       this.currentYear = n.year();
       this.currentMonth = n.month() + 1;
       this.selectedDate = n.clone();
+      this.lastUserSelectTime = Date.now();
       await this.refresh();
       await this.plugin.fileManager.openAndNavigateToDate(n);
     });
@@ -1335,6 +1338,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
         this.selectedDate = dateCopy.clone();
+        this.lastUserSelectTime = Date.now();
         await this.render();
         await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
       });
@@ -1923,8 +1927,11 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
     if (dateKey === this.lastSyncedDateKey)
       return;
     this.lastSyncedDateKey = dateKey;
+    const now = Date.now();
     for (const leaf of this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE)) {
       const calView = leaf.view;
+      if (now - calView.lastUserSelectTime < 3e3)
+        continue;
       calView.selectDate(m);
     }
   }
