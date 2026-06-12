@@ -565,6 +565,10 @@ var FileManager = class {
           break;
         }
         insertIdx = i + 1;
+        while (insertIdx < lines.length && !lines[insertIdx].startsWith("#### ") && !lines[insertIdx].startsWith("### ") && !lines[insertIdx].startsWith("## ")) {
+          insertIdx++;
+        }
+        i = insertIdx - 1;
       }
     }
     const dayHeading = `#### ${formatDayTitle(date, this.settings)}`;

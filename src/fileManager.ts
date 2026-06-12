@@ -274,7 +274,7 @@ export class FileManager {
       insertIdx++;
     }
 
-    // 找到正确的日期插入位置
+    // 找到正确的日期插入位置（跳过已有日期块的全部内容）
     for (let i = insertIdx; i < lines.length; i++) {
       const line = lines[i];
       if (line.startsWith("## ") || line.startsWith("### ")) break;
@@ -284,7 +284,17 @@ export class FileManager {
           insertIdx = i;
           break;
         }
+        // 该日期 <= 目标日期，跳过该日期块的全部内容
         insertIdx = i + 1;
+        while (
+          insertIdx < lines.length &&
+          !lines[insertIdx].startsWith("#### ") &&
+          !lines[insertIdx].startsWith("### ") &&
+          !lines[insertIdx].startsWith("## ")
+        ) {
+          insertIdx++;
+        }
+        i = insertIdx - 1; // 让 for 循环从 insertIdx 继续
       }
     }
 
