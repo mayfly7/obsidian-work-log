@@ -510,6 +510,35 @@ var FileManager = class {
     }
   }
   /**
+   * 打开文件并定位到指定日期，光标放在该日期内容块的末尾
+   */
+  async openAndNavigateToEndOfDate(date) {
+    const year = date.year();
+    const file = await this.getOrCreateFile(year);
+    let lineMap = await this.getDateLineMap(file);
+    const dateKey = date.format("YYYY-MM-DD");
+    if (!lineMap.has(dateKey)) {
+      await this.insertMissingDateBlock(file, date);
+      lineMap = await this.buildCache(file);
+    }
+    const headingLine = lineMap.get(dateKey);
+    if (headingLine === void 0)
+      return;
+    const content = await this.app.vault.read(file);
+    const lines = content.split("\n");
+    let endLine = headingLine;
+    for (let i = headingLine + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("#### ") || lines[i].startsWith("### ") || lines[i].startsWith("## ") || lines[i].startsWith("# ")) {
+        break;
+      }
+      endLine = i;
+    }
+    const targetLine = endLine === headingLine ? headingLine : endLine;
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    this.scrollToLineWithRetry(leaf, targetLine, 0);
+  }
+  /**
    * 在文件中插入缺失的日期区块，保持月/周/日结构完整
    */
   async insertMissingDateBlock(file, date) {
@@ -1643,7 +1672,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
         if (isSameDay(target, (0, import_obsidian4.moment)())) {
           await this.plugin.fileManager.insertTimestampEntry(target);
         } else {
-          await this.plugin.fileManager.openAndNavigateToDate(target);
+          await this.plugin.fileManager.openAndNavigateToEndOfDate(target);
         }
         await this.render();
       });

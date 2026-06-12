@@ -314,8 +314,8 @@ export class CalendarView extends ItemView {
           // 当天：插入当前时间
           await this.plugin.fileManager.insertTimestampEntry(target);
         } else {
-          // 非当天：只打开文件，不插时间
-          await this.plugin.fileManager.openAndNavigateToDate(target);
+          // 非当天：打开并定位到该日期内容末尾
+          await this.plugin.fileManager.openAndNavigateToEndOfDate(target);
         }
         await this.render();
       });
