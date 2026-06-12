@@ -530,12 +530,12 @@ var FileManager = class {
     const monthHeading = `## ${formatMonthHeading(month)}`;
     const monthLineIdx = lines.findIndex((l) => l.trim() === monthHeading);
     if (monthLineIdx === -1) {
-      await this.insertMonthBlock(file, targetMg, groups, year);
+      await this.insertMonthBlock(file, targetMg, groups, year, date);
     } else {
       const weekTitle = `### ${formatWeekTitle(targetWg, year)}`;
       const weekLineIdx = lines.findIndex((l) => l.trim() === weekTitle);
       if (weekLineIdx === -1) {
-        await this.insertWeekBlock(file, targetMg, targetWg, month, year);
+        await this.insertWeekBlock(file, targetMg, targetWg, month, year, date);
       } else {
         await this.insertDayHeading(file, date, targetWg, year);
       }
@@ -571,7 +571,7 @@ var FileManager = class {
     lines.splice(insertIdx, 0, dayHeading, "");
     await this.app.vault.modify(file, lines.join("\n"));
   }
-  async insertWeekBlock(file, mg, wg, month, year) {
+  async insertWeekBlock(file, mg, wg, month, year, targetDate) {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
     const monthHeading = `## ${formatMonthHeading(month)}`;
@@ -596,14 +596,19 @@ var FileManager = class {
       }
     }
     const weekLines = ["", `### ${formatWeekTitle(wg, year)}`, ""];
-    for (const day of wg.days) {
-      weekLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+    if (targetDate) {
+      weekLines.push(`#### ${formatDayTitle(targetDate, this.settings)}`);
       weekLines.push("");
+    } else {
+      for (const day of wg.days) {
+        weekLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+        weekLines.push("");
+      }
     }
     lines.splice(insertIdx, 0, ...weekLines);
     await this.app.vault.modify(file, lines.join("\n"));
   }
-  async insertMonthBlock(file, mg, allGroups, year) {
+  async insertMonthBlock(file, mg, allGroups, year, targetDate) {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
     let insertIdx = lines.length;
@@ -620,12 +625,24 @@ var FileManager = class {
       }
     }
     const monthLines = ["", `## ${formatMonthHeading(mg.month)}`, ""];
-    for (const wg of mg.weeks) {
-      monthLines.push(`### ${formatWeekTitle(wg, year)}`);
-      monthLines.push("");
-      for (const day of wg.days) {
-        monthLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+    if (targetDate) {
+      const wg = mg.weeks.find(
+        (w) => w.days.some((d) => d.format("YYYY-MM-DD") === targetDate.format("YYYY-MM-DD"))
+      );
+      if (wg) {
+        monthLines.push(`### ${formatWeekTitle(wg, year)}`);
         monthLines.push("");
+        monthLines.push(`#### ${formatDayTitle(targetDate, this.settings)}`);
+        monthLines.push("");
+      }
+    } else {
+      for (const wg of mg.weeks) {
+        monthLines.push(`### ${formatWeekTitle(wg, year)}`);
+        monthLines.push("");
+        for (const day of wg.days) {
+          monthLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+          monthLines.push("");
+        }
       }
     }
     lines.splice(insertIdx, 0, ...monthLines);

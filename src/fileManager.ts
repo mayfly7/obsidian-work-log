@@ -235,15 +235,15 @@ export class FileManager {
     const monthLineIdx = lines.findIndex((l) => l.trim() === monthHeading);
 
     if (monthLineIdx === -1) {
-      // 月份不存在，在合适位置插入整个月份块
-      await this.insertMonthBlock(file, targetMg, groups, year);
+      // 月份不存在，在合适位置插入最小月份块（只含目标日期）
+      await this.insertMonthBlock(file, targetMg, groups, year, date);
     } else {
       // 月份存在，检查周标题
       const weekTitle = `### ${formatWeekTitle(targetWg, year)}`;
       const weekLineIdx = lines.findIndex((l) => l.trim() === weekTitle);
 
       if (weekLineIdx === -1) {
-        await this.insertWeekBlock(file, targetMg, targetWg, month, year);
+        await this.insertWeekBlock(file, targetMg, targetWg, month, year, date);
       } else {
         // 周已存在，只插入日期标题
         await this.insertDayHeading(file, date, targetWg, year);
@@ -298,7 +298,9 @@ export class FileManager {
     mg: MonthGroup,
     wg: WeekGroup,
     month: number,
-    year: number
+    year: number,
+    /** 只插入这一个日期，不插入整周 */
+    targetDate?: moment.Moment
   ): Promise<void> {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
@@ -327,11 +329,18 @@ export class FileManager {
       }
     }
 
-    // 生成周块（含该周所有天的标题）
+    // 生成周块
     const weekLines: string[] = ["", `### ${formatWeekTitle(wg, year)}`, ""];
-    for (const day of wg.days) {
-      weekLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+    if (targetDate) {
+      // 只插入目标日期
+      weekLines.push(`#### ${formatDayTitle(targetDate, this.settings)}`);
       weekLines.push("");
+    } else {
+      // 完整生成该周所有天
+      for (const day of wg.days) {
+        weekLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+        weekLines.push("");
+      }
     }
 
     lines.splice(insertIdx, 0, ...weekLines);
@@ -342,7 +351,9 @@ export class FileManager {
     file: TFile,
     mg: MonthGroup,
     allGroups: MonthGroup[],
-    year: number
+    year: number,
+    /** 只插入这一个日期，不插入整月 */
+    targetDate?: moment.Moment
   ): Promise<void> {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
@@ -364,14 +375,28 @@ export class FileManager {
       }
     }
 
-    // 生成完整月份块
+    // 生成月份块
     const monthLines: string[] = ["", `## ${formatMonthHeading(mg.month)}`, ""];
-    for (const wg of mg.weeks) {
-      monthLines.push(`### ${formatWeekTitle(wg, year)}`);
-      monthLines.push("");
-      for (const day of wg.days) {
-        monthLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+    if (targetDate) {
+      // 只插入目标日期所在的周 + 目标日期
+      const wg = mg.weeks.find((w) =>
+        w.days.some((d) => d.format("YYYY-MM-DD") === targetDate.format("YYYY-MM-DD"))
+      );
+      if (wg) {
+        monthLines.push(`### ${formatWeekTitle(wg, year)}`);
         monthLines.push("");
+        monthLines.push(`#### ${formatDayTitle(targetDate, this.settings)}`);
+        monthLines.push("");
+      }
+    } else {
+      // 完整生成所有周
+      for (const wg of mg.weeks) {
+        monthLines.push(`### ${formatWeekTitle(wg, year)}`);
+        monthLines.push("");
+        for (const day of wg.days) {
+          monthLines.push(`#### ${formatDayTitle(day, this.settings)}`);
+          monthLines.push("");
+        }
       }
     }
 
