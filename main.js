@@ -1825,6 +1825,7 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
         } catch (e) {
         }
       }
+      await this.delay(500);
       if (!this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE).length) {
         await this.activateCalendarView(false);
       }
@@ -1871,6 +1872,9 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
       const view = leaf.view;
       view.refresh();
     }
+  }
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
   // ─────────────────────────────────────────────────────
   // 编辑器光标同步到日历

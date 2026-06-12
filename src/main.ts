@@ -190,7 +190,9 @@ export default class WorkLogPlugin extends Plugin {
         }
       }
 
-      // 自动打开日历视图（如果之前是打开的）
+      // 自动打开日历视图 —— 等待一段时间让 Obsidian 完成布局恢复
+      // 否则 Obsidian 恢复布局后会再创建一个，导致出现两个视图
+      await this.delay(500);
       if (!this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE).length) {
         await this.activateCalendarView(false);
       }
@@ -251,6 +253,10 @@ export default class WorkLogPlugin extends Plugin {
       const view = leaf.view as CalendarView;
       view.refresh();
     }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ─────────────────────────────────────────────────────
