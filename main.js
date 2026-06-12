@@ -1384,7 +1384,12 @@ var CalendarView = class extends import_obsidian4.ItemView {
     if (this.plugin.settings.entryMode === "timestamp") {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.plugin.fileManager.insertTimestampEntry(getTarget());
+        const target = getTarget();
+        if (isSameDay(target, (0, import_obsidian4.moment)())) {
+          await this.plugin.fileManager.insertTimestampEntry(target);
+        } else {
+          await this.plugin.fileManager.openAndNavigateToDate(target);
+        }
         await this.render();
       });
     } else {

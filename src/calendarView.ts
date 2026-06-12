@@ -284,10 +284,17 @@ export class CalendarView extends ItemView {
     };
 
     if (this.plugin.settings.entryMode === "timestamp") {
-      // 时间戳模式：直接插入当前时间
+      // 时间戳模式
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.plugin.fileManager.insertTimestampEntry(getTarget());
+        const target = getTarget();
+        if (isSameDay(target, moment())) {
+          // 当天：插入当前时间
+          await this.plugin.fileManager.insertTimestampEntry(target);
+        } else {
+          // 非当天：只打开文件，不插时间
+          await this.plugin.fileManager.openAndNavigateToDate(target);
+        }
         await this.render();
       });
     } else {
