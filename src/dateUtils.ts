@@ -1,5 +1,6 @@
 import { moment } from "obsidian";
 import type { WorkLogSettings } from "./settings";
+import { getHolidayName } from "./holidays";
 
 export interface DayInfo {
   date: moment.Moment;
@@ -168,7 +169,9 @@ export function formatWeekTitle(wg: WeekGroup, year: number): string {
 export function formatDayTitle(date: moment.Moment, settings: WorkLogSettings): string {
   const dateStr = date.format(settings.dateFormat);
   const weekday = formatWeekday(date, settings.weekdayLanguage);
-  return `${dateStr} ${weekday}`;
+  const holiday = getHolidayName(date.format("YYYY-MM-DD"));
+  const suffix = holiday ? `（${holiday}）` : "";
+  return `${dateStr} ${weekday}${suffix}`;
 }
 
 /**

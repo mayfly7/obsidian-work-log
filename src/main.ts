@@ -14,7 +14,7 @@ import { FileManager } from "./fileManager";
 import { CalendarView, CALENDAR_VIEW_TYPE } from "./calendarView";
 import { SearchView, SEARCH_VIEW_TYPE, getMonthStats } from "./statistics";
 import { parseDayTitle } from "./dateUtils";
-import { fetchHolidays } from "./holidays";
+import { fetchHolidays, initBuiltinHolidays } from "./holidays";
 
 export default class WorkLogPlugin extends Plugin {
   settings: WorkLogSettings;
@@ -27,7 +27,10 @@ export default class WorkLogPlugin extends Plugin {
 
     this.fileManager = new FileManager(this.app, this.settings);
 
-    // ─── 联网获取节假日 ──────────────────────────────────────────
+    // ─── 节假日：立即加载内置数据，保证文件生成时就可用 ────────────
+    initBuiltinHolidays();
+
+    // ─── 联网获取最新节假日 ────────────────────────────────────────
     const thisYear = moment().year();
     fetchHolidays(requestUrl, thisYear);
     fetchHolidays(requestUrl, thisYear + 1);

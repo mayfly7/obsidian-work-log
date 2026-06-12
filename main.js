@@ -137,6 +137,113 @@ var import_obsidian3 = require("obsidian");
 
 // src/dateUtils.ts
 var import_obsidian2 = require("obsidian");
+
+// src/holidays.ts
+var HOLIDAY_CACHE = {};
+var FETCHED_YEARS = /* @__PURE__ */ new Set();
+var BUILTIN = {
+  // ── 2026 ──
+  "2026-01-01": "\u5143\u65E6",
+  "2026-01-02": "\u5143\u65E6",
+  "2026-01-03": "\u5143\u65E6",
+  "2026-02-15": "\u6625\u8282",
+  "2026-02-16": "\u6625\u8282",
+  "2026-02-17": "\u6625\u8282",
+  "2026-02-18": "\u6625\u8282",
+  "2026-02-19": "\u6625\u8282",
+  "2026-02-20": "\u6625\u8282",
+  "2026-02-21": "\u6625\u8282",
+  "2026-04-05": "\u6E05\u660E",
+  "2026-04-06": "\u6E05\u660E",
+  "2026-04-07": "\u6E05\u660E",
+  "2026-05-01": "\u52B3\u52A8\u8282",
+  "2026-05-02": "\u52B3\u52A8\u8282",
+  "2026-05-03": "\u52B3\u52A8\u8282",
+  "2026-05-04": "\u52B3\u52A8\u8282",
+  "2026-05-05": "\u52B3\u52A8\u8282",
+  "2026-06-19": "\u7AEF\u5348",
+  "2026-06-20": "\u7AEF\u5348",
+  "2026-06-21": "\u7AEF\u5348",
+  "2026-09-25": "\u4E2D\u79CB",
+  "2026-09-26": "\u4E2D\u79CB",
+  "2026-09-27": "\u4E2D\u79CB",
+  "2026-10-01": "\u56FD\u5E86",
+  "2026-10-02": "\u56FD\u5E86",
+  "2026-10-03": "\u56FD\u5E86",
+  "2026-10-04": "\u56FD\u5E86",
+  "2026-10-05": "\u56FD\u5E86",
+  "2026-10-06": "\u56FD\u5E86",
+  "2026-10-07": "\u56FD\u5E86",
+  // ── 2027 ──
+  "2027-01-01": "\u5143\u65E6",
+  "2027-01-02": "\u5143\u65E6",
+  "2027-01-03": "\u5143\u65E6",
+  "2027-02-06": "\u6625\u8282",
+  "2027-02-07": "\u6625\u8282",
+  "2027-02-08": "\u6625\u8282",
+  "2027-02-09": "\u6625\u8282",
+  "2027-02-10": "\u6625\u8282",
+  "2027-02-11": "\u6625\u8282",
+  "2027-02-12": "\u6625\u8282",
+  "2027-04-05": "\u6E05\u660E",
+  "2027-04-06": "\u6E05\u660E",
+  "2027-04-07": "\u6E05\u660E",
+  "2027-05-01": "\u52B3\u52A8\u8282",
+  "2027-05-02": "\u52B3\u52A8\u8282",
+  "2027-05-03": "\u52B3\u52A8\u8282",
+  "2027-05-04": "\u52B3\u52A8\u8282",
+  "2027-05-05": "\u52B3\u52A8\u8282",
+  "2027-06-09": "\u7AEF\u5348",
+  "2027-06-10": "\u7AEF\u5348",
+  "2027-06-11": "\u7AEF\u5348",
+  "2027-09-15": "\u4E2D\u79CB",
+  "2027-09-16": "\u4E2D\u79CB",
+  "2027-09-17": "\u4E2D\u79CB",
+  "2027-10-01": "\u56FD\u5E86",
+  "2027-10-02": "\u56FD\u5E86",
+  "2027-10-03": "\u56FD\u5E86",
+  "2027-10-04": "\u56FD\u5E86",
+  "2027-10-05": "\u56FD\u5E86",
+  "2027-10-06": "\u56FD\u5E86",
+  "2027-10-07": "\u56FD\u5E86"
+};
+function initBuiltinHolidays() {
+  for (const [key, val] of Object.entries(BUILTIN)) {
+    if (!HOLIDAY_CACHE[key]) {
+      HOLIDAY_CACHE[key] = val;
+    }
+  }
+}
+async function fetchHolidays(requestUrl3, year) {
+  var _a;
+  if (FETCHED_YEARS.has(year))
+    return;
+  try {
+    const url = `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`;
+    const resp = await requestUrl3({ url, method: "GET" });
+    if (resp.status !== 200 || !((_a = resp.json) == null ? void 0 : _a.days)) {
+      throw new Error("Invalid response");
+    }
+    for (const day of resp.json.days) {
+      if (day.isOffDay && day.date) {
+        HOLIDAY_CACHE[day.date] = day.name;
+      }
+    }
+    FETCHED_YEARS.add(year);
+  } catch (e) {
+    for (const [key, val] of Object.entries(BUILTIN)) {
+      if (key.startsWith(String(year) + "-") && !HOLIDAY_CACHE[key]) {
+        HOLIDAY_CACHE[key] = val;
+      }
+    }
+    FETCHED_YEARS.add(year);
+  }
+}
+function getHolidayName(dateKey) {
+  return HOLIDAY_CACHE[dateKey] || "";
+}
+
+// src/dateUtils.ts
 var ZH_MONTH_NAMES = [
   "",
   "\u4E00\u6708",
@@ -229,7 +336,9 @@ function formatWeekTitle(wg, year) {
 function formatDayTitle(date, settings) {
   const dateStr = date.format(settings.dateFormat);
   const weekday = formatWeekday(date, settings.weekdayLanguage);
-  return `${dateStr} ${weekday}`;
+  const holiday = getHolidayName(date.format("YYYY-MM-DD"));
+  const suffix = holiday ? `\uFF08${holiday}\uFF09` : "";
+  return `${dateStr} ${weekday}${suffix}`;
 }
 function parseDayTitle(heading, dateFormat) {
   const stripped = heading.replace(/^####\s+/, "").trim();
@@ -1149,106 +1258,6 @@ var FileManager = class {
 
 // src/calendarView.ts
 var import_obsidian4 = require("obsidian");
-
-// src/holidays.ts
-var HOLIDAY_CACHE = {};
-var FETCHED_YEARS = /* @__PURE__ */ new Set();
-var BUILTIN = {
-  // ── 2026 ──
-  "2026-01-01": "\u5143\u65E6",
-  "2026-01-02": "\u5143\u65E6",
-  "2026-01-03": "\u5143\u65E6",
-  "2026-02-15": "\u6625\u8282",
-  "2026-02-16": "\u6625\u8282",
-  "2026-02-17": "\u6625\u8282",
-  "2026-02-18": "\u6625\u8282",
-  "2026-02-19": "\u6625\u8282",
-  "2026-02-20": "\u6625\u8282",
-  "2026-02-21": "\u6625\u8282",
-  "2026-04-05": "\u6E05\u660E",
-  "2026-04-06": "\u6E05\u660E",
-  "2026-04-07": "\u6E05\u660E",
-  "2026-05-01": "\u52B3\u52A8\u8282",
-  "2026-05-02": "\u52B3\u52A8\u8282",
-  "2026-05-03": "\u52B3\u52A8\u8282",
-  "2026-05-04": "\u52B3\u52A8\u8282",
-  "2026-05-05": "\u52B3\u52A8\u8282",
-  "2026-06-19": "\u7AEF\u5348",
-  "2026-06-20": "\u7AEF\u5348",
-  "2026-06-21": "\u7AEF\u5348",
-  "2026-09-25": "\u4E2D\u79CB",
-  "2026-09-26": "\u4E2D\u79CB",
-  "2026-09-27": "\u4E2D\u79CB",
-  "2026-10-01": "\u56FD\u5E86",
-  "2026-10-02": "\u56FD\u5E86",
-  "2026-10-03": "\u56FD\u5E86",
-  "2026-10-04": "\u56FD\u5E86",
-  "2026-10-05": "\u56FD\u5E86",
-  "2026-10-06": "\u56FD\u5E86",
-  "2026-10-07": "\u56FD\u5E86",
-  // ── 2027 ──
-  "2027-01-01": "\u5143\u65E6",
-  "2027-01-02": "\u5143\u65E6",
-  "2027-01-03": "\u5143\u65E6",
-  "2027-02-06": "\u6625\u8282",
-  "2027-02-07": "\u6625\u8282",
-  "2027-02-08": "\u6625\u8282",
-  "2027-02-09": "\u6625\u8282",
-  "2027-02-10": "\u6625\u8282",
-  "2027-02-11": "\u6625\u8282",
-  "2027-02-12": "\u6625\u8282",
-  "2027-04-05": "\u6E05\u660E",
-  "2027-04-06": "\u6E05\u660E",
-  "2027-04-07": "\u6E05\u660E",
-  "2027-05-01": "\u52B3\u52A8\u8282",
-  "2027-05-02": "\u52B3\u52A8\u8282",
-  "2027-05-03": "\u52B3\u52A8\u8282",
-  "2027-05-04": "\u52B3\u52A8\u8282",
-  "2027-05-05": "\u52B3\u52A8\u8282",
-  "2027-06-09": "\u7AEF\u5348",
-  "2027-06-10": "\u7AEF\u5348",
-  "2027-06-11": "\u7AEF\u5348",
-  "2027-09-15": "\u4E2D\u79CB",
-  "2027-09-16": "\u4E2D\u79CB",
-  "2027-09-17": "\u4E2D\u79CB",
-  "2027-10-01": "\u56FD\u5E86",
-  "2027-10-02": "\u56FD\u5E86",
-  "2027-10-03": "\u56FD\u5E86",
-  "2027-10-04": "\u56FD\u5E86",
-  "2027-10-05": "\u56FD\u5E86",
-  "2027-10-06": "\u56FD\u5E86",
-  "2027-10-07": "\u56FD\u5E86"
-};
-async function fetchHolidays(requestUrl3, year) {
-  var _a;
-  if (FETCHED_YEARS.has(year))
-    return;
-  try {
-    const url = `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`;
-    const resp = await requestUrl3({ url, method: "GET" });
-    if (resp.status !== 200 || !((_a = resp.json) == null ? void 0 : _a.days)) {
-      throw new Error("Invalid response");
-    }
-    for (const day of resp.json.days) {
-      if (day.isOffDay && day.date) {
-        HOLIDAY_CACHE[day.date] = day.name;
-      }
-    }
-    FETCHED_YEARS.add(year);
-  } catch (e) {
-    for (const [key, val] of Object.entries(BUILTIN)) {
-      if (key.startsWith(String(year) + "-") && !HOLIDAY_CACHE[key]) {
-        HOLIDAY_CACHE[key] = val;
-      }
-    }
-    FETCHED_YEARS.add(year);
-  }
-}
-function getHolidayName(dateKey) {
-  return HOLIDAY_CACHE[dateKey] || "";
-}
-
-// src/calendarView.ts
 var CALENDAR_VIEW_TYPE = "work-log-calendar";
 var CalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
@@ -1825,6 +1834,7 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
   async onload() {
     await this.loadSettings();
     this.fileManager = new FileManager(this.app, this.settings);
+    initBuiltinHolidays();
     const thisYear = (0, import_obsidian6.moment)().year();
     fetchHolidays(import_obsidian6.requestUrl, thisYear);
     fetchHolidays(import_obsidian6.requestUrl, thisYear + 1);

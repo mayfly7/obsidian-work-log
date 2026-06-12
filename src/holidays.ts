@@ -81,6 +81,18 @@ const BUILTIN: Record<string, string> = {
 };
 
 /**
+ * 立即加载内置回退数据到缓存（同步）
+ * 在插件启动时调用，确保文件生成前就有节假日数据
+ */
+export function initBuiltinHolidays(): void {
+  for (const [key, val] of Object.entries(BUILTIN)) {
+    if (!HOLIDAY_CACHE[key]) {
+      HOLIDAY_CACHE[key] = val;
+    }
+  }
+}
+
+/**
  * 联网获取指定年份的节假日数据
  * @param requestUrl Obsidian 的 requestUrl 函数（避免直接依赖 obsidian 模块）
  * @param year 目标年份
