@@ -943,14 +943,20 @@ var FileManager = class {
       newLines.push("");
     }
     for (const mg of groups) {
-      newLines.push(`## ${formatMonthHeading(mg.month)}`);
-      newLines.push("");
+      const visibleWeeks = [];
       for (const wg of mg.weeks) {
         const daysToInclude = wg.days.filter(
           (d) => !d.isAfter(today, "day")
         );
-        if (daysToInclude.length === 0)
-          continue;
+        if (daysToInclude.length > 0) {
+          visibleWeeks.push({ wg, days: daysToInclude });
+        }
+      }
+      if (visibleWeeks.length === 0)
+        continue;
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
+      for (const { wg, days: daysToInclude } of visibleWeeks) {
         newLines.push(`### ${formatWeekTitle(wg, year)}`);
         newLines.push("");
         for (const day of daysToInclude) {

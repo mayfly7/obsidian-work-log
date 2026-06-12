@@ -763,16 +763,24 @@ export class FileManager {
     }
 
     for (const mg of groups) {
-      newLines.push(`## ${formatMonthHeading(mg.month)}`);
-      newLines.push("");
-
+      // 先收集该月所有到今天为止的周
+      const visibleWeeks: { wg: WeekGroup; days: moment.Moment[] }[] = [];
       for (const wg of mg.weeks) {
-        // 检查该周是否有今天或之前的日期
         const daysToInclude = wg.days.filter(
           (d) => !d.isAfter(today, "day")
         );
-        if (daysToInclude.length === 0) continue; // 整个周都在今天之后，跳过
+        if (daysToInclude.length > 0) {
+          visibleWeeks.push({ wg, days: daysToInclude });
+        }
+      }
 
+      // 该月没有任何到今天为止的日期 → 跳过整个月份
+      if (visibleWeeks.length === 0) continue;
+
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
+
+      for (const { wg, days: daysToInclude } of visibleWeeks) {
         newLines.push(`### ${formatWeekTitle(wg, year)}`);
         newLines.push("");
 
