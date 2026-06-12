@@ -1478,10 +1478,12 @@ var CalendarView = class extends import_obsidian4.ItemView {
       }
       const dateCopy = cur.clone();
       cell.addEventListener("click", async () => {
-        this.selectedDate = dateCopy.clone();
+        const today2 = (0, import_obsidian4.moment)();
+        const navigateTarget = this.plugin.settings.generationMode === "up_to_today" && dateCopy.isAfter(today2, "day") ? today2.clone() : dateCopy.clone();
+        this.selectedDate = navigateTarget.clone();
         this.lastUserSelectTime = Date.now();
         await this.render();
-        await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
+        await this.plugin.fileManager.openAndNavigateToDate(navigateTarget);
       });
       if (!this.app.isMobile) {
         cell.addEventListener("mouseenter", async (e) => {

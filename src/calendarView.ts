@@ -239,10 +239,17 @@ export class CalendarView extends ItemView {
 
       // Click: select date + open file
       cell.addEventListener("click", async () => {
-        this.selectedDate = dateCopy.clone();
+        const today = moment();
+        // 每天新增模式：未来日期跳转到今天
+        const navigateTarget = (
+          this.plugin.settings.generationMode === "up_to_today"
+          && dateCopy.isAfter(today, "day")
+        ) ? today.clone() : dateCopy.clone();
+
+        this.selectedDate = navigateTarget.clone();
         this.lastUserSelectTime = Date.now();
         await this.render();
-        await this.plugin.fileManager.openAndNavigateToDate(dateCopy);
+        await this.plugin.fileManager.openAndNavigateToDate(navigateTarget);
       });
 
       // Hover preview: temporary selected box + update button text (desktop only)
