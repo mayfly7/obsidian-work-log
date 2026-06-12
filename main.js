@@ -39,6 +39,7 @@ var DEFAULT_SETTINGS = {
   weekdayLanguage: "zh",
   generationMode: "up_to_today",
   timestampFormat: "HH:mm",
+  entryMode: "ampm",
   showContentDots: true,
   fileHeaderTemplate: "# {{year}}\u5E74\u5DE5\u4F5C\u65E5\u5FD7"
 };
@@ -98,6 +99,12 @@ var WorkLogSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("\u63D2\u5165\u65F6\u95F4\u6233\u683C\u5F0F").setDesc("\u5FEB\u901F\u63D2\u5165\u5DE5\u4F5C\u8BB0\u5F55\u65F6\u7684\u65F6\u95F4\u524D\u7F00\uFF08Moment.js \u683C\u5F0F\uFF09\uFF0C\u9ED8\u8BA4 HH:mm").addText(
       (text) => text.setPlaceholder("HH:mm").setValue(this.plugin.settings.timestampFormat).onChange(async (value) => {
         this.plugin.settings.timestampFormat = value.trim() || "HH:mm";
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("\u6DFB\u52A0\u5DE5\u4F5C\u8BB0\u5F55\u65B9\u5F0F").setDesc("\u70B9\u51FB\u300C\u6DFB\u52A0\u5DE5\u4F5C\u8BB0\u5F55\u300D\u6309\u94AE\u65F6\u7684\u884C\u4E3A").addDropdown(
+      (dd) => dd.addOption("ampm", "\u9009\u62E9 \u4E0A\u5348 / \u4E0B\u5348").addOption("timestamp", "\u63D2\u5165\u5F53\u524D\u65F6\u95F4").setValue(this.plugin.settings.entryMode).onChange(async (value) => {
+        this.plugin.settings.entryMode = value;
         await this.plugin.saveSettings();
       })
     );
@@ -1371,36 +1378,44 @@ var CalendarView = class extends import_obsidian4.ItemView {
     const btn = actionBar.createEl("button", { cls: "wl-add-btn" });
     btn.textContent = label;
     this.actionBtnEl = btn;
-    const popup = actionBar.createDiv("wl-session-popup");
-    popup.style.display = "none";
-    this.actionPopupEl = popup;
     const getTarget = () => {
       return this.selectedDate ? this.selectedDate.clone() : (0, import_obsidian4.moment)();
     };
-    const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
-    amBtn.textContent = "\u2600 \u4E0A\u5348";
-    amBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0A\u5348");
-      await this.render();
-    });
-    const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
-    pmBtn.textContent = "\u{1F319} \u4E0B\u5348";
-    pmBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0B\u5348");
-      await this.render();
-    });
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isVisible = popup.style.display !== "none";
-      popup.style.display = isVisible ? "none" : "flex";
-    });
-    document.addEventListener("click", (ev) => {
-      if (!actionBar.contains(ev.target)) {
-        popup.style.display = "none";
-      }
-    });
+    if (this.plugin.settings.entryMode === "timestamp") {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertTimestampEntry(getTarget());
+        await this.render();
+      });
+    } else {
+      const popup = actionBar.createDiv("wl-session-popup");
+      popup.style.display = "none";
+      this.actionPopupEl = popup;
+      const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
+      amBtn.textContent = "\u2600 \u4E0A\u5348";
+      amBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0A\u5348");
+        await this.render();
+      });
+      const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
+      pmBtn.textContent = "\u{1F319} \u4E0B\u5348";
+      pmBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertSessionLabel(getTarget(), "\u4E0B\u5348");
+        await this.render();
+      });
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isVisible = popup.style.display !== "none";
+        popup.style.display = isVisible ? "none" : "flex";
+      });
+      document.addEventListener("click", (ev) => {
+        if (!actionBar.contains(ev.target)) {
+          popup.style.display = "none";
+        }
+      });
+    }
     const todoBtn = actionBar.createEl("button", { cls: "wl-todo-btn" });
     todoBtn.textContent = "\u2610 \u6DFB\u52A0\u5F85\u529E";
     todoBtn.addEventListener("click", async () => {

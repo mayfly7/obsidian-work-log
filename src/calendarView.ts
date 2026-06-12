@@ -279,43 +279,52 @@ export class CalendarView extends ItemView {
     btn.textContent = label;
     this.actionBtnEl = btn;
 
-    // Popup for session picker
-    const popup = actionBar.createDiv("wl-session-popup");
-    popup.style.display = "none";
-    this.actionPopupEl = popup;
-
     const getTarget = (): moment.Moment => {
       return this.selectedDate ? this.selectedDate.clone() : moment();
     };
 
-    const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
-    amBtn.textContent = "☀ 上午";
-    amBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(getTarget(), "上午");
-      await this.render();
-    });
+    if (this.plugin.settings.entryMode === "timestamp") {
+      // 时间戳模式：直接插入当前时间
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertTimestampEntry(getTarget());
+        await this.render();
+      });
+    } else {
+      // 上午/下午模式：弹出选项
+      const popup = actionBar.createDiv("wl-session-popup");
+      popup.style.display = "none";
+      this.actionPopupEl = popup;
 
-    const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
-    pmBtn.textContent = "🌙 下午";
-    pmBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await this.plugin.fileManager.insertSessionLabel(getTarget(), "下午");
-      await this.render();
-    });
+      const amBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-am" });
+      amBtn.textContent = "☀ 上午";
+      amBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertSessionLabel(getTarget(), "上午");
+        await this.render();
+      });
 
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isVisible = popup.style.display !== "none";
-      popup.style.display = isVisible ? "none" : "flex";
-    });
+      const pmBtn = popup.createEl("button", { cls: "wl-session-opt wl-session-pm" });
+      pmBtn.textContent = "🌙 下午";
+      pmBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.fileManager.insertSessionLabel(getTarget(), "下午");
+        await this.render();
+      });
 
-    // Click outside to close
-    document.addEventListener("click", (ev) => {
-      if (!actionBar.contains(ev.target as Node)) {
-        popup.style.display = "none";
-      }
-    });
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isVisible = popup.style.display !== "none";
+        popup.style.display = isVisible ? "none" : "flex";
+      });
+
+      // Click outside to close
+      document.addEventListener("click", (ev) => {
+        if (!actionBar.contains(ev.target as Node)) {
+          popup.style.display = "none";
+        }
+      });
+    }
 
     // ─── 添加待办按钮 ────────────────────────────
     const todoBtn = actionBar.createEl("button", { cls: "wl-todo-btn" });

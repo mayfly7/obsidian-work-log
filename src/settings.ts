@@ -16,6 +16,8 @@ export interface WorkLogSettings {
   generationMode: "full_year" | "up_to_today";
   /** 插入时间戳格式 */
   timestampFormat: string;
+  /** 添加工作记录的方式：'ampm'=选上午/下午, 'timestamp'=插入当前时间 */
+  entryMode: "ampm" | "timestamp";
   /** 是否在日历上标记有内容的日期 */
   showContentDots: boolean;
   /** 文件头部模板 */
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: WorkLogSettings = {
   weekdayLanguage: "zh",
   generationMode: "up_to_today",
   timestampFormat: "HH:mm",
+  entryMode: "ampm",
   showContentDots: true,
   fileHeaderTemplate: "# {{year}}年工作日志",
 };
@@ -159,6 +162,20 @@ export class WorkLogSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.timestampFormat)
           .onChange(async (value) => {
             this.plugin.settings.timestampFormat = value.trim() || "HH:mm";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("添加工作记录方式")
+      .setDesc('点击「添加工作记录」按钮时的行为')
+      .addDropdown((dd) =>
+        dd
+          .addOption("ampm", "选择 上午 / 下午")
+          .addOption("timestamp", "插入当前时间")
+          .setValue(this.plugin.settings.entryMode)
+          .onChange(async (value) => {
+            this.plugin.settings.entryMode = value as "ampm" | "timestamp";
             await this.plugin.saveSettings();
           })
       );
