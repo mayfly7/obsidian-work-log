@@ -1,7 +1,7 @@
-import { ItemView, WorkspaceLeaf, moment } from "obsidian";
+import { ItemView, WorkspaceLeaf, moment, requestUrl } from "obsidian";
 import type WorkLogPlugin from "./main";
 import { isSameDay } from "./dateUtils";
-import { getHolidayName } from "./holidays";
+import { getHolidayName, fetchHolidays } from "./holidays";
 
 export const CALENDAR_VIEW_TYPE = "work-log-calendar";
 
@@ -103,6 +103,7 @@ export class CalendarView extends ItemView {
     }
     yearSel.addEventListener("change", async (e) => {
       this.currentYear = parseInt((e.target as HTMLSelectElement).value);
+      await fetchHolidays(requestUrl, this.currentYear);
       await this.refresh();
     });
 

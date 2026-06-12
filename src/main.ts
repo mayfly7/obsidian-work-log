@@ -6,6 +6,7 @@ import {
   Notice,
   Plugin,
   moment,
+  requestUrl,
   TFile,
 } from "obsidian";
 import { WorkLogSettings, WorkLogSettingTab, DEFAULT_SETTINGS } from "./settings";
@@ -13,6 +14,7 @@ import { FileManager } from "./fileManager";
 import { CalendarView, CALENDAR_VIEW_TYPE } from "./calendarView";
 import { SearchView, SEARCH_VIEW_TYPE, getMonthStats } from "./statistics";
 import { parseDayTitle } from "./dateUtils";
+import { fetchHolidays } from "./holidays";
 
 export default class WorkLogPlugin extends Plugin {
   settings: WorkLogSettings;
@@ -24,6 +26,11 @@ export default class WorkLogPlugin extends Plugin {
     await this.loadSettings();
 
     this.fileManager = new FileManager(this.app, this.settings);
+
+    // ─── 联网获取节假日 ──────────────────────────────────────────
+    const thisYear = moment().year();
+    fetchHolidays(requestUrl, thisYear);
+    fetchHolidays(requestUrl, thisYear + 1);
 
     // ─── 注册视图 ────────────────────────────────────────────────
     this.registerView(CALENDAR_VIEW_TYPE, (leaf) => new CalendarView(leaf, this));

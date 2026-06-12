@@ -1151,8 +1151,10 @@ var FileManager = class {
 var import_obsidian4 = require("obsidian");
 
 // src/holidays.ts
-var HOLIDAY_RAW = {
-  // ── 2026 年 ──────────────────────────────────────
+var HOLIDAY_CACHE = {};
+var FETCHED_YEARS = /* @__PURE__ */ new Set();
+var BUILTIN = {
+  // ── 2026 ──
   "2026-01-01": "\u5143\u65E6",
   "2026-01-02": "\u5143\u65E6",
   "2026-01-03": "\u5143\u65E6",
@@ -1184,7 +1186,7 @@ var HOLIDAY_RAW = {
   "2026-10-05": "\u56FD\u5E86",
   "2026-10-06": "\u56FD\u5E86",
   "2026-10-07": "\u56FD\u5E86",
-  // ── 2027 年 ──────────────────────────────────────
+  // ── 2027 ──
   "2027-01-01": "\u5143\u65E6",
   "2027-01-02": "\u5143\u65E6",
   "2027-01-03": "\u5143\u65E6",
@@ -1217,8 +1219,33 @@ var HOLIDAY_RAW = {
   "2027-10-06": "\u56FD\u5E86",
   "2027-10-07": "\u56FD\u5E86"
 };
+async function fetchHolidays(requestUrl3, year) {
+  var _a;
+  if (FETCHED_YEARS.has(year))
+    return;
+  try {
+    const url = `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`;
+    const resp = await requestUrl3({ url, method: "GET" });
+    if (resp.status !== 200 || !((_a = resp.json) == null ? void 0 : _a.days)) {
+      throw new Error("Invalid response");
+    }
+    for (const day of resp.json.days) {
+      if (day.isOffDay && day.date) {
+        HOLIDAY_CACHE[day.date] = day.name;
+      }
+    }
+    FETCHED_YEARS.add(year);
+  } catch (e) {
+    for (const [key, val] of Object.entries(BUILTIN)) {
+      if (key.startsWith(String(year) + "-") && !HOLIDAY_CACHE[key]) {
+        HOLIDAY_CACHE[key] = val;
+      }
+    }
+    FETCHED_YEARS.add(year);
+  }
+}
 function getHolidayName(dateKey) {
-  return HOLIDAY_RAW[dateKey] || "";
+  return HOLIDAY_CACHE[dateKey] || "";
 }
 
 // src/calendarView.ts
@@ -1299,6 +1326,7 @@ var CalendarView = class extends import_obsidian4.ItemView {
     }
     yearSel.addEventListener("change", async (e) => {
       this.currentYear = parseInt(e.target.value);
+      await fetchHolidays(import_obsidian4.requestUrl, this.currentYear);
       await this.refresh();
     });
     titleArea.createSpan({ text: "\u5E74", cls: "wl-title-sep" });
@@ -1797,6 +1825,9 @@ var WorkLogPlugin = class extends import_obsidian6.Plugin {
   async onload() {
     await this.loadSettings();
     this.fileManager = new FileManager(this.app, this.settings);
+    const thisYear = (0, import_obsidian6.moment)().year();
+    fetchHolidays(import_obsidian6.requestUrl, thisYear);
+    fetchHolidays(import_obsidian6.requestUrl, thisYear + 1);
     this.registerView(CALENDAR_VIEW_TYPE, (leaf) => new CalendarView(leaf, this));
     this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
     this.addSettingTab(new WorkLogSettingTab(this.app, this));
