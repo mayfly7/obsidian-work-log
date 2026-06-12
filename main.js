@@ -681,53 +681,118 @@ var FileManager = class {
   // 结构修复
   // ─────────────────────────────────────────────────────
   /**
-   * 修复当前年度文件结构：补全缺失的月份/周/日期标题，不覆盖已有内容
+   * 修复/重建年度文件结构：读取已有内容，按正确结构重建，不丢失数据
+   *
+   * 策略：先解析所有日期及其内容 → 按 buildYearStructure 生成正确骨架 → 填入内容
+   * 这比逐个插入单个日期更可靠，不会出现日期错位或内容被挤的问题
    */
   async repairYearStructure(year) {
     const file = await this.getOrCreateFile(year);
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
     const groups = buildYearStructure(year, this.settings);
-    const existingMonths = /* @__PURE__ */ new Set();
-    const existingWeeks = /* @__PURE__ */ new Set();
-    const existingDays = /* @__PURE__ */ new Set();
+    const dateContent = /* @__PURE__ */ new Map();
+    const headerLines = [];
+    let currentDateKey = null;
+    let currentContent = [];
+    let headerDone = false;
     for (const line of lines) {
-      if (line.startsWith("## "))
-        existingMonths.add(line.trim());
-      if (line.startsWith("### "))
-        existingWeeks.add(line.trim());
-      if (line.startsWith("#### ")) {
-        const m = parseDayTitle(line, this.settings.dateFormat);
-        if (m)
-          existingDays.add(m.format("YYYY-MM-DD"));
-      }
-    }
-    let repaired = 0;
-    for (const mg of groups) {
-      const monthHeading = `## ${formatMonthHeading(mg.month)}`;
-      if (!existingMonths.has(monthHeading)) {
-        await this.insertMonthBlock(file, mg, groups, year);
-        repaired++;
+      if (!headerDone && !line.startsWith("## ")) {
+        headerLines.push(line);
         continue;
       }
-      for (const wg of mg.weeks) {
-        const weekHeading = `### ${formatWeekTitle(wg, year)}`;
-        if (!existingWeeks.has(weekHeading)) {
-          await this.insertWeekBlock(file, mg, wg, mg.month, year);
-          repaired++;
-          continue;
+      headerDone = true;
+      if (line.startsWith("#### ")) {
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
         }
-        for (const day of wg.days) {
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+        currentContent = [];
+        const colonIdx = line.indexOf("\uFF1A");
+        if (colonIdx === -1) {
+          const colonIdx2 = line.indexOf(":");
+          if (colonIdx2 !== -1)
+            currentContent.push(line.substring(colonIdx2 + 1).trim());
+        } else {
+          currentContent.push(line.substring(colonIdx + 1).trim());
+        }
+      } else if (line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ")) {
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
+        }
+        currentDateKey = null;
+        currentContent = [];
+      } else if (currentDateKey) {
+        currentContent.push(line);
+      }
+    }
+    if (currentDateKey && currentContent.length > 0) {
+      while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+        currentContent.pop();
+      }
+      if (currentContent.length > 0) {
+        dateContent.set(currentDateKey, currentContent);
+      }
+    }
+    const newLines = [...headerLines];
+    if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== "") {
+      newLines.push("");
+    }
+    for (const mg of groups) {
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
+      for (const wg of mg.weeks) {
+        const weekDays = wg.days;
+        if (weekDays.length === 0)
+          continue;
+        newLines.push(`### ${formatWeekTitle(wg, year)}`);
+        newLines.push("");
+        for (const day of weekDays) {
           const dateKey = day.format("YYYY-MM-DD");
-          if (!existingDays.has(dateKey)) {
-            await this.insertDayHeading(file, day, wg, year);
-            repaired++;
+          const heading = `#### ${formatDayTitle(day, this.settings)}`;
+          const content2 = dateContent.get(dateKey);
+          newLines.push(heading);
+          if (content2 && content2.length > 0) {
+            if (content2.length === 1 && content2[0].trim() !== "" && !content2[0].trim().startsWith("- ") && !content2[0].trim().startsWith("- [") && !content2[0].trim().startsWith("-[")) {
+              newLines[newLines.length - 1] = heading + "\uFF1A" + content2[0].trim();
+            } else {
+              for (const cl of content2) {
+                newLines.push(cl);
+              }
+            }
+            if (newLines[newLines.length - 1].trim() !== "") {
+              newLines.push("");
+            }
+          } else {
+            newLines.push("");
           }
         }
       }
     }
+    while (newLines.length > 0 && newLines[newLines.length - 1].trim() === "") {
+      newLines.pop();
+    }
+    newLines.push("");
+    const newContent = newLines.join("\n");
+    if (newContent !== content) {
+      await this.app.vault.modify(file, newContent);
+      const mode = this.settings.generationMode === "full_year" ? "\u5168\u5E74" : "\u6BCF\u5929";
+      new import_obsidian3.Notice(`\u7ED3\u6784\u91CD\u5EFA\u5B8C\u6210\uFF08${mode}\u6A21\u5F0F\uFF09\uFF0C\u5171 ${dateContent.size} \u4E2A\u65E5\u671F\u5757\u5DF2\u6062\u590D`);
+    } else {
+      new import_obsidian3.Notice("\u7ED3\u6784\u5DF2\u662F\u6700\u65B0\uFF0C\u65E0\u9700\u91CD\u5EFA");
+    }
     this.invalidateCache(year);
-    new import_obsidian3.Notice(`\u7ED3\u6784\u4FEE\u590D\u5B8C\u6210\uFF0C\u8865\u5168\u4E86 ${repaired} \u5904\u7F3A\u5931\u6807\u9898`);
   }
   /**
    * 迁移日期格式：把文件中旧格式的日期标题替换为当前设置的日期格式
@@ -806,6 +871,10 @@ var FileManager = class {
   /**
    * 切换为每天新增模式时，删除今天之后的所有日期和周标题
    */
+  /**
+   * 裁剪今天之后的日期：重建文件，只保留到今天
+   * 使用与 repairYearStructure 相同的重建逻辑，确保结构正确
+   */
   async trimAfterToday(year) {
     const filePath = this.getFilePath(year);
     const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -814,78 +883,107 @@ var FileManager = class {
     const today = (0, import_obsidian3.moment)();
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
-    const todayFormatted = today.format(this.settings.dateFormat);
-    let todayLineIdx = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    const groups = buildYearStructure(year, this.settings);
+    const dateContent = /* @__PURE__ */ new Map();
+    const headerLines = [];
+    let currentDateKey = null;
+    let currentContent = [];
+    let headerDone = false;
+    for (const line of lines) {
+      if (!headerDone && !line.startsWith("## ")) {
+        headerLines.push(line);
+        continue;
+      }
+      headerDone = true;
       if (line.startsWith("#### ")) {
-        const weekdays = [
-          "\u661F\u671F\u4E00",
-          "\u661F\u671F\u4E8C",
-          "\u661F\u671F\u4E09",
-          "\u661F\u671F\u56DB",
-          "\u661F\u671F\u4E94",
-          "\u661F\u671F\u516D",
-          "\u661F\u671F\u65E5",
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday"
-        ];
-        if (weekdays.some((w) => line.includes(w)) && line.includes(todayFormatted)) {
-          todayLineIdx = i;
-          break;
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
         }
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+        currentContent = [];
+        const colonIdx = line.indexOf("\uFF1A");
+        if (colonIdx === -1) {
+          const colonIdx2 = line.indexOf(":");
+          if (colonIdx2 !== -1)
+            currentContent.push(line.substring(colonIdx2 + 1).trim());
+        } else {
+          currentContent.push(line.substring(colonIdx + 1).trim());
+        }
+      } else if (line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ")) {
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
+        }
+        currentDateKey = null;
+        currentContent = [];
+      } else if (currentDateKey) {
+        currentContent.push(line);
       }
     }
-    if (todayLineIdx === -1) {
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith("#### ")) {
-          const m = parseDayTitle(line, this.settings.dateFormat);
-          if (m && m.isValid()) {
-            if (m.isSameOrAfter(today, "day")) {
-              todayLineIdx = i;
-              break;
+    if (currentDateKey && currentContent.length > 0) {
+      while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+        currentContent.pop();
+      }
+      if (currentContent.length > 0) {
+        dateContent.set(currentDateKey, currentContent);
+      }
+    }
+    const newLines = [...headerLines];
+    if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== "") {
+      newLines.push("");
+    }
+    for (const mg of groups) {
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
+      for (const wg of mg.weeks) {
+        const daysToInclude = wg.days.filter(
+          (d) => !d.isAfter(today, "day")
+        );
+        if (daysToInclude.length === 0)
+          continue;
+        newLines.push(`### ${formatWeekTitle(wg, year)}`);
+        newLines.push("");
+        for (const day of daysToInclude) {
+          const dateKey = day.format("YYYY-MM-DD");
+          const heading = `#### ${formatDayTitle(day, this.settings)}`;
+          const content2 = dateContent.get(dateKey);
+          newLines.push(heading);
+          if (content2 && content2.length > 0) {
+            if (content2.length === 1 && content2[0].trim() !== "" && !content2[0].trim().startsWith("- ") && !content2[0].trim().startsWith("- [") && !content2[0].trim().startsWith("-[")) {
+              newLines[newLines.length - 1] = heading + "\uFF1A" + content2[0].trim();
+            } else {
+              for (const cl of content2) {
+                newLines.push(cl);
+              }
             }
+            if (newLines[newLines.length - 1].trim() !== "") {
+              newLines.push("");
+            }
+          } else {
+            newLines.push("");
           }
         }
       }
     }
-    if (todayLineIdx === -1)
-      return;
-    let todayBlockEnd = todayLineIdx + 1;
-    for (let i = todayLineIdx + 1; i < lines.length; i++) {
-      if (lines[i].startsWith("#### ") || lines[i].startsWith("## ")) {
-        todayBlockEnd = i;
-        break;
-      }
-      todayBlockEnd = i + 1;
+    while (newLines.length > 0 && newLines[newLines.length - 1].trim() === "") {
+      newLines.pop();
     }
-    let keepTo = todayBlockEnd;
-    while (keepTo > 0 && lines[keepTo - 1].trim() === "")
-      keepTo--;
-    while (keepTo > 0) {
-      const lastLine = lines[keepTo - 1].trim();
-      if (lastLine === "") {
-        keepTo--;
-        continue;
-      }
-      if (lastLine.startsWith("### ")) {
-        keepTo--;
-        while (keepTo > 0 && lines[keepTo - 1].trim() === "")
-          keepTo--;
-        continue;
-      }
-      break;
+    newLines.push("");
+    const newContent = newLines.join("\n");
+    if (newContent !== content) {
+      await this.app.vault.modify(file, newContent);
+      new import_obsidian3.Notice("\u5DF2\u88C1\u526A\u5230\u4ECA\u5929\uFF0C\u672A\u6765\u65E5\u671F\u5DF2\u79FB\u9664");
     }
-    const newLines = lines.slice(0, keepTo);
-    if (newLines[newLines.length - 1] !== "")
-      newLines.push("");
-    await this.app.vault.modify(file, newLines.join("\n"));
     this.invalidateCache(year);
   }
   // ─────────────────────────────────────────────────────

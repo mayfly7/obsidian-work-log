@@ -448,7 +448,10 @@ export class FileManager {
   // ─────────────────────────────────────────────────────
 
   /**
-   * 修复当前年度文件结构：补全缺失的月份/周/日期标题，不覆盖已有内容
+   * 修复/重建年度文件结构：读取已有内容，按正确结构重建，不丢失数据
+   *
+   * 策略：先解析所有日期及其内容 → 按 buildYearStructure 生成正确骨架 → 填入内容
+   * 这比逐个插入单个日期更可靠，不会出现日期错位或内容被挤的问题
    */
   async repairYearStructure(year: number): Promise<void> {
     const file = await this.getOrCreateFile(year);
@@ -457,50 +460,139 @@ export class FileManager {
 
     const groups = buildYearStructure(year, this.settings);
 
-    // 收集文件中已有的标题
-    const existingMonths = new Set<string>();
-    const existingWeeks = new Set<string>();
-    const existingDays = new Set<string>();
+    // ── 第1步：解析已有文件，提取每个日期的内容 ──
+    // dateContent: "YYYY-MM-DD" → 该日期下的所有行（不含标题行）
+    const dateContent = new Map<string, string[]>();
+    // 也保留文件头（第一个 ## 之前的内容）
+    const headerLines: string[] = [];
+    let currentDateKey: string | null = null;
+    let currentContent: string[] = [];
+    let headerDone = false;
 
     for (const line of lines) {
-      if (line.startsWith("## ")) existingMonths.add(line.trim());
-      if (line.startsWith("### ")) existingWeeks.add(line.trim());
+      if (!headerDone && !line.startsWith("## ")) {
+        headerLines.push(line);
+        continue;
+      }
+      headerDone = true;
+
       if (line.startsWith("#### ")) {
+        // 保存上一个日期块
+        if (currentDateKey && currentContent.length > 0) {
+          // 去掉末尾空行
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
+        }
+        // 解析新日期
         const m = parseDayTitle(line, this.settings.dateFormat);
-        if (m) existingDays.add(m.format("YYYY-MM-DD"));
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+        currentContent = [];
+        // 冒号后的同行动内容
+        const colonIdx = line.indexOf("：");
+        if (colonIdx === -1) {
+          const colonIdx2 = line.indexOf(":");
+          if (colonIdx2 !== -1) currentContent.push(line.substring(colonIdx2 + 1).trim());
+        } else {
+          currentContent.push(line.substring(colonIdx + 1).trim());
+        }
+      } else if (line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ")) {
+        // 遇到标题，保存当前日期块
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
+        }
+        currentDateKey = null;
+        currentContent = [];
+      } else if (currentDateKey) {
+        // 日期内容行
+        currentContent.push(line);
+      }
+    }
+    // 最后一个日期块
+    if (currentDateKey && currentContent.length > 0) {
+      while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+        currentContent.pop();
+      }
+      if (currentContent.length > 0) {
+        dateContent.set(currentDateKey, currentContent);
       }
     }
 
-    let repaired = 0;
+    // ── 第2步：按正确结构重建文件 ──
+    const newLines: string[] = [...headerLines];
+
+    // 确保文件头后有至少一个空行
+    if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== "") {
+      newLines.push("");
+    }
 
     for (const mg of groups) {
-      const monthHeading = `## ${formatMonthHeading(mg.month)}`;
-      if (!existingMonths.has(monthHeading)) {
-        await this.insertMonthBlock(file, mg, groups, year);
-        repaired++;
-        continue;
-      }
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
 
       for (const wg of mg.weeks) {
-        const weekHeading = `### ${formatWeekTitle(wg, year)}`;
-        if (!existingWeeks.has(weekHeading)) {
-          await this.insertWeekBlock(file, mg, wg, mg.month, year);
-          repaired++;
-          continue;
-        }
+        // 检查该周是否有日期（全年模式全部有，每天模式可能跳过）
+        const weekDays = wg.days;
+        if (weekDays.length === 0) continue;
 
-        for (const day of wg.days) {
+        newLines.push(`### ${formatWeekTitle(wg, year)}`);
+        newLines.push("");
+
+        for (const day of weekDays) {
           const dateKey = day.format("YYYY-MM-DD");
-          if (!existingDays.has(dateKey)) {
-            await this.insertDayHeading(file, day, wg, year);
-            repaired++;
+          const heading = `#### ${formatDayTitle(day, this.settings)}`;
+          const content = dateContent.get(dateKey);
+
+          newLines.push(heading);
+
+          if (content && content.length > 0) {
+            // 单行非列表内容 → 冒号后缀合并到标题行
+            if (content.length === 1 && content[0].trim() !== "" &&
+                !content[0].trim().startsWith("- ") && 
+                !content[0].trim().startsWith("- [") && 
+                !content[0].trim().startsWith("-[")) {
+              newLines[newLines.length - 1] = heading + "：" + content[0].trim();
+            } else {
+              // 多行或列表内容 → 逐行追加
+              for (const cl of content) {
+                newLines.push(cl);
+              }
+            }
+            // 确保日期块末尾有空行
+            if (newLines[newLines.length - 1].trim() !== "") {
+              newLines.push("");
+            }
+          } else {
+            newLines.push("");
           }
         }
       }
     }
 
+    // 去掉末尾多余空行
+    while (newLines.length > 0 && newLines[newLines.length - 1].trim() === "") {
+      newLines.pop();
+    }
+    newLines.push("");
+
+    const newContent = newLines.join("\n");
+    if (newContent !== content) {
+      await this.app.vault.modify(file, newContent);
+      const mode = this.settings.generationMode === "full_year" ? "全年" : "每天";
+      new Notice(`结构重建完成（${mode}模式），共 ${dateContent.size} 个日期块已恢复`);
+    } else {
+      new Notice("结构已是最新，无需重建");
+    }
+
     this.invalidateCache(year);
-    new Notice(`结构修复完成，补全了 ${repaired} 处缺失标题`);
   }
 
   /**
@@ -592,6 +684,10 @@ export class FileManager {
   /**
    * 切换为每天新增模式时，删除今天之后的所有日期和周标题
    */
+  /**
+   * 裁剪今天之后的日期：重建文件，只保留到今天
+   * 使用与 repairYearStructure 相同的重建逻辑，确保结构正确
+   */
   async trimAfterToday(year: number): Promise<void> {
     const filePath = this.getFilePath(year);
     const file = this.app.vault.getAbstractFileByPath(filePath) as TFile | null;
@@ -601,79 +697,124 @@ export class FileManager {
     const content = await this.app.vault.read(file);
     const lines = content.split("\n");
 
-    // 找到今天的日期标题所在行
-    const todayFormatted = today.format(this.settings.dateFormat);
-    let todayLineIdx = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    const groups = buildYearStructure(year, this.settings);
+
+    // ── 解析已有内容 ──（与 repairYearStructure 相同逻辑）
+    const dateContent = new Map<string, string[]>();
+    const headerLines: string[] = [];
+    let currentDateKey: string | null = null;
+    let currentContent: string[] = [];
+    let headerDone = false;
+
+    for (const line of lines) {
+      if (!headerDone && !line.startsWith("## ")) {
+        headerLines.push(line);
+        continue;
+      }
+      headerDone = true;
+
       if (line.startsWith("#### ")) {
-        const weekdays = ["星期一","星期二","星期三","星期四","星期五","星期六","星期日",
-          "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-        if (weekdays.some((w) => line.includes(w)) && line.includes(todayFormatted)) {
-          // 还需要确认一下：看下一行开始是不是真的有内容
-          // 找该日期块结束的位置（下一个 #### 或 ## 之前）
-          todayLineIdx = i;
-          break;
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
         }
+        const m = parseDayTitle(line, this.settings.dateFormat);
+        currentDateKey = m ? m.format("YYYY-MM-DD") : null;
+        currentContent = [];
+        const colonIdx = line.indexOf("：");
+        if (colonIdx === -1) {
+          const colonIdx2 = line.indexOf(":");
+          if (colonIdx2 !== -1) currentContent.push(line.substring(colonIdx2 + 1).trim());
+        } else {
+          currentContent.push(line.substring(colonIdx + 1).trim());
+        }
+      } else if (line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ")) {
+        if (currentDateKey && currentContent.length > 0) {
+          while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+            currentContent.pop();
+          }
+          if (currentContent.length > 0) {
+            dateContent.set(currentDateKey, currentContent);
+          }
+        }
+        currentDateKey = null;
+        currentContent = [];
+      } else if (currentDateKey) {
+        currentContent.push(line);
+      }
+    }
+    if (currentDateKey && currentContent.length > 0) {
+      while (currentContent.length > 0 && currentContent[currentContent.length - 1].trim() === "") {
+        currentContent.pop();
+      }
+      if (currentContent.length > 0) {
+        dateContent.set(currentDateKey, currentContent);
       }
     }
 
-    if (todayLineIdx === -1) {
-      // 没找到今天的标题，用日期匹配所有 #### 行
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith("#### ")) {
-          const m = parseDayTitle(line, this.settings.dateFormat);
-          if (m && m.isValid()) {
-            if (m.isSameOrAfter(today, "day")) {
-              todayLineIdx = i;
-              break;
+    // ── 重建文件（只到今天的日期）──
+    const newLines: string[] = [...headerLines];
+    if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== "") {
+      newLines.push("");
+    }
+
+    for (const mg of groups) {
+      newLines.push(`## ${formatMonthHeading(mg.month)}`);
+      newLines.push("");
+
+      for (const wg of mg.weeks) {
+        // 检查该周是否有今天或之前的日期
+        const daysToInclude = wg.days.filter(
+          (d) => !d.isAfter(today, "day")
+        );
+        if (daysToInclude.length === 0) continue; // 整个周都在今天之后，跳过
+
+        newLines.push(`### ${formatWeekTitle(wg, year)}`);
+        newLines.push("");
+
+        for (const day of daysToInclude) {
+          const dateKey = day.format("YYYY-MM-DD");
+          const heading = `#### ${formatDayTitle(day, this.settings)}`;
+          const content = dateContent.get(dateKey);
+
+          newLines.push(heading);
+
+          if (content && content.length > 0) {
+            if (content.length === 1 && content[0].trim() !== "" &&
+                !content[0].trim().startsWith("- ") && 
+                !content[0].trim().startsWith("- [") && 
+                !content[0].trim().startsWith("-[")) {
+              newLines[newLines.length - 1] = heading + "：" + content[0].trim();
+            } else {
+              for (const cl of content) {
+                newLines.push(cl);
+              }
             }
+            if (newLines[newLines.length - 1].trim() !== "") {
+              newLines.push("");
+            }
+          } else {
+            newLines.push("");
           }
         }
       }
     }
 
-    if (todayLineIdx === -1) return; // 没有需要处理的
+    while (newLines.length > 0 && newLines[newLines.length - 1].trim() === "") {
+      newLines.pop();
+    }
+    newLines.push("");
 
-    // 找到今天日期块的结束位置（下一个 #### 之前）
-    let todayBlockEnd = todayLineIdx + 1;
-    for (let i = todayLineIdx + 1; i < lines.length; i++) {
-      if (lines[i].startsWith("#### ") || lines[i].startsWith("## ")) {
-        todayBlockEnd = i;
-        break;
-      }
-      todayBlockEnd = i + 1;
+    const newContent = newLines.join("\n");
+    if (newContent !== content) {
+      await this.app.vault.modify(file, newContent);
+      new Notice("已裁剪到今天，未来日期已移除");
     }
 
-    // 保留行数：到 todayBlockEnd 为止
-    let keepTo = todayBlockEnd;
-
-    // 检查保留部分末尾是否有空的周标题（该周在今天后没有日期了）
-    while (keepTo > 0 && lines[keepTo - 1].trim() === "")
-      keepTo--; // 去掉尾部空行
-
-    // 如果保留部分以空行+周标题结尾，删除空行和周标题
-    while (keepTo > 0) {
-      const lastLine = lines[keepTo - 1].trim();
-      if (lastLine === "") {
-        keepTo--;
-        continue;
-      }
-      if (lastLine.startsWith("### ")) {
-        keepTo--;
-        // 去掉前面的空行
-        while (keepTo > 0 && lines[keepTo - 1].trim() === "") keepTo--;
-        continue;
-      }
-      break;
-    }
-
-    const newLines = lines.slice(0, keepTo);
-    // 确保末尾有换行
-    if (newLines[newLines.length - 1] !== "") newLines.push("");
-
-    await this.app.vault.modify(file, newLines.join("\n"));
     this.invalidateCache(year);
   }
 
